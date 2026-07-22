@@ -1,0 +1,5 @@
+Ordre;Code;Libelle;RoleResponsable;DelaiEventuel;EtapeSuivante;Active
+1;DEMANDE_INITIALE;Demande initiale;DEMANDEUR;;CONTROLE_CONFORMITE;TRUE
+2;CONTROLE_CONFORMITE;Contrôle de conformité;CONFORMITE;;VALIDATION_CHEF_CORPS;TRUE
+3;VALIDATION_CHEF_CORPS;Validation du chef de corps;CHEF_CORPS;;TRANSMISSION_BSPS;TRUE
+4;TRANSMISSION_BSPS;Transmission au bureau sécurité;BSPS;;;TRUE

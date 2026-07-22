@@ -1,0 +1,14 @@
+Code;Libelle;Terminal
+BROUILLON;Brouillon;FALSE
+SOUMISE;Soumise;FALSE
+A_CONTROLER;À contrôler;FALSE
+EN_CONTROLE;En contrôle;FALSE
+A_CORRIGER;À corriger;FALSE
+RESOUMISE;Resoumise;FALSE
+A_VALIDER_CHEF_CORPS;À valider par le chef de corps;FALSE
+EN_VALIDATION_CHEF_CORPS;En validation chef de corps;FALSE
+REFUSEE;Refusée;TRUE
+A_TRANSMETTRE_BSPS;À transmettre à la BSPS;FALSE
+TRANSMISE_BSPS;Transmise à la BSPS;TRUE
+CLOTUREE;Clôturée;TRUE
+ARCHIVEE;Archivée;TRUE
