@@ -1,0 +1,15 @@
+# Rapport de vérification
+
+## Vérifications exécutées localement
+
+- Analyse intégrale du CSV : UTF-8 BOM, `;`, 19 lignes, 22 colonnes métier + terminaison vide, références uniques.
+- Migration hors réseau : génération déterministe Demandes/Actions/Historique, conservation des URL sans téléchargement, rapport JSON.
+- Tests unitaires du moteur : normalisation d'adresse, champs obligatoires, urgence, dates, jours calendaires/ouvrés, verrouillage, retour motivé, version et terminal BSPS.
+- Inspection statique : aucune URL GitHub/CDN, aucun `eval`, aucun secret, aucune donnée personnelle en localStorage, neutralisation du rendu utilisateur.
+- Mode hors Grist : démonstration explicite et sans écriture.
+
+## Limites restantes
+
+Impossible sans instance cible : ouverture réelle dans Grist, authentification ProConnect, installation/validation des ACL, API exacte de la version, concurrence multi-session, dépôt/téléchargement Attachments, export XLSX natif, suppression transactionnelle et test réseau/CSP. Ces points ne sont pas déclarés réussis et sont listés dans la recette.
+
+Le widget actuel couvre tableau de bord, filtres, formulaire de brouillon et validations essentielles. Les écrans complets de décision/admin et la transaction multi-table doivent être achevés après validation du schéma/ACL sur l'instance ; les règles métier réutilisables sont présentes dans `workflow-core.js`. La signature électronique reste expressément hors périmètre.

@@ -1,0 +1,14 @@
+# Données historiques potentiellement sensibles
+source-resana.csv
+migration/output/
+
+# Fichiers locaux et secrets
+.env
+.env.*
+*.log
+node_modules/
+.DS_Store
+Thumbs.db
+
+# L'analyse locale contient des noms issus de l'historique RESANA.
+ANALYSE_CSV.md
