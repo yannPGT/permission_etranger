@@ -4,7 +4,8 @@
 
 - Analyse intégrale du CSV : UTF-8 BOM, `;`, 19 lignes, 22 colonnes métier + terminaison vide, références uniques.
 - Migration hors réseau : génération déterministe Demandes/Actions/Historique, conservation des URL sans téléchargement, rapport JSON.
-- Tests unitaires du moteur : normalisation d'adresse, champs obligatoires, urgence, dates, jours calendaires/ouvrés, verrouillage, retour motivé, version et terminal BSPS.
+- Tests unitaires du moteur : normalisation d'adresse, champs obligatoires, urgence, dates, jours calendaires/ouvrés, verrouillage, retour motivé, resoumission vers l'étape d'origine, version et terminal BSPS.
+- Tests structurels : présence des vues Tableau de bord, Mes actions, formulaire et dossier ; cohérence des identifiants DOM ; ordre de chargement de l'API Grist ; absence de stockage local, `eval` et caractères mal encodés.
 - Inspection statique : aucune URL GitHub/CDN, aucun `eval`, aucun secret, aucune donnée personnelle en localStorage, neutralisation du rendu utilisateur.
 - Mode hors Grist : démonstration explicite et sans écriture.
 

@@ -2,6 +2,8 @@
 
 La page d'accueil présente vos seules actions autorisées. Les cartes résument urgences, retards et corrections ; recherche et statut filtrent la liste.
 
+La page « Mes actions » présente les actions `A_FAIRE` et `EN_COURS` visibles selon les règles Grist. « Prendre en charge » horodate la réception et la prise en charge. « Traiter » ouvre le dossier et propose uniquement les décisions de l'étape : validation, retour motivé, refus définitif ou transmission BSPS.
+
 Pour créer une demande, choisir « Nouvelle demande », sélectionner le personnel autorisé, le pays et les dates, saisir le motif et justifier toute urgence. L'unité, l'entité et la catégorie sont issues des référentiels et ne sont pas librement modifiables. Enregistrer d'abord le brouillon, puis ajouter le PDF SOFIA dans la colonne native Grist. Vérifier et soumettre.
 
 Après soumission, le dossier est verrouillé. Un retour affiche le motif et rend seulement les champs autorisés modifiables ; décrire les corrections, remplacer le PDF si nécessaire, puis « Soumettre à nouveau ». La version augmente et les décisions précédentes restent dans l'historique. « Refusée » est définitif ; « À corriger » ne l'est pas.
