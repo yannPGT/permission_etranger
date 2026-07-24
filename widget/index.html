@@ -1,5 +1,74 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Permissions à l’étranger</title><link rel="stylesheet" href="styles.css"></head>
-<body><header><div class="brand"><span class="logo" aria-hidden="true">BSPP</span><div><strong>Permissions à l’étranger</strong><small id="mode">Connexion à Grist…</small></div></div><nav><button data-view="dashboard">Tableau de bord</button><button data-view="form">Nouvelle demande</button></nav></header>
-<main><div id="alert" role="status" aria-live="polite"></div><section id="dashboard"><h1>Mes actions en attente</h1><div class="cards" id="cards"></div><div class="toolbar"><label>Rechercher <input id="search" type="search"></label><label>Statut <select id="filter"><option value="">Tous</option></select></label></div><div class="table-wrap"><table><thead><tr><th>Référence</th><th>Personnel</th><th>Pays</th><th>Statut</th><th>Échéance</th></tr></thead><tbody id="rows"></tbody></table></div></section>
-<section id="form" hidden><h1>Nouvelle demande</h1><form id="request"><label>Personnel concerné* <input name="PersonnelConcerne" required></label><label>Unité <input name="Unite" readonly></label><label>Pays* <select name="PaysDestination" required></select></label><label>Premier jour* <input type="date" name="DateDebutSejour" required></label><label>Date de retour* <input type="date" name="DateFinSejour" required></label><label>Motif* <textarea name="MotifDeplacement" required></textarea></label><label><input type="checkbox" name="Urgente"> Demande urgente</label><label>Justification de l’urgence <textarea name="JustificationUrgence"></textarea></label><label>PDF SOFIA <input type="file" accept="application/pdf,.pdf" name="Pdf"></label><p class="hint">Le dépôt natif Grist est utilisé si l’instance ne permet pas un téléversement sûr depuis le widget.</p><div class="actions"><button type="button" id="cancel">Annuler</button><button type="submit" class="primary">Enregistrer le brouillon</button></div></form></section></main>
-<script src="workflow-core.js"></script><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Permissions à l’étranger</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo" aria-hidden="true">BSPP</span><div><strong>Permissions à l’étranger</strong><small id="mode">Connexion à Grist…</small></div></div>
+    <nav aria-label="Navigation principale">
+      <button data-view="dashboard" aria-current="page">Tableau de bord</button>
+      <button data-view="tasks">Mes actions <span id="taskBadge" class="badge">0</span></button>
+      <button data-view="form">Nouvelle demande</button>
+    </nav>
+  </header>
+  <main>
+    <div id="alert" role="status" aria-live="polite"></div>
+
+    <section id="dashboard">
+      <h1>Tableau de bord</h1>
+      <div class="cards" id="cards"></div>
+      <div class="toolbar">
+        <label>Rechercher <input id="search" type="search" autocomplete="off"></label>
+        <label>Statut <select id="filter"><option value="">Tous</option></select></label>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Référence</th><th>Personnel</th><th>Pays</th><th>Statut</th><th>Échéance</th><th></th></tr></thead><tbody id="requestRows"></tbody></table></div>
+    </section>
+
+    <section id="tasks" hidden>
+      <div class="section-title"><div><h1>Mes actions</h1><p>Actions à traiter selon votre périmètre Grist.</p></div><button id="refreshTasks">Actualiser</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Demande</th><th>Étape</th><th>Personnel</th><th>Transmission</th><th>Priorité</th><th></th></tr></thead><tbody id="taskRows"></tbody></table></div>
+    </section>
+
+    <section id="form" hidden>
+      <h1>Nouvelle demande</h1>
+      <form id="requestForm">
+        <label>Personnel concerné* <select name="PersonnelConcerne" required></select></label>
+        <label>Unité <input name="Unite" readonly aria-describedby="unitHint"><small id="unitHint">Déduite de la fiche Personnel.</small></label>
+        <label>Objet <input name="Objet" maxlength="200"></label>
+        <label>Pays* <select name="PaysDestination" required></select></label>
+        <label>Premier jour à l’étranger* <input type="date" name="DateDebutSejour" required></label>
+        <label>Date de retour* <input type="date" name="DateFinSejour" required></label>
+        <label>Motif* <textarea name="MotifDeplacement" required></textarea></label>
+        <label class="inline"><input type="checkbox" name="Urgente"> Demande urgente</label>
+        <label>Justification de l’urgence <textarea name="JustificationUrgence"></textarea></label>
+        <label>PDF SOFIA <input type="file" accept="application/pdf,.pdf" name="Pdf"></label>
+        <p class="hint">Ajoutez le PDF dans la colonne native Grist après création du brouillon.</p>
+        <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Enregistrer le brouillon</button></div>
+      </form>
+    </section>
+
+    <section id="detail" hidden>
+      <div class="section-title"><h1>Dossier <span id="detailRef"></span></h1><button type="button" data-close>Fermer</button></div>
+      <div id="detailBody" class="detail-grid"></div>
+      <div id="requestWorkflowActions" class="workflow-actions" hidden>
+        <button type="button" id="submitRequest" class="primary">Soumettre la demande</button>
+        <p id="submitRequestHint" class="hint"></p>
+      </div>
+      <form id="decisionForm" hidden>
+        <h2>Traiter l’action</h2>
+        <label>Décision* <select name="Decision" required></select></label>
+        <label id="returnReason" hidden>Motif du retour* <textarea name="MotifRetour"></textarea></label>
+        <label>Commentaire <textarea name="Commentaire"></textarea></label>
+        <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Confirmer la décision</button></div>
+      </form>
+    </section>
+  </main>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script src="workflow-core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
