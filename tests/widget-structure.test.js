@@ -24,3 +24,11 @@ test('aucun stockage local, eval ou texte mal encodé',()=>{
   assert.doesNotMatch(all,/localStorage|sessionStorage|\beval\s*\(/);
   assert.doesNotMatch(all,/Ã|â€™|â€¦|Â/);
 });
+test('identité Grist obligatoire et utilisée pour les actions',()=>{
+  assert.match(app,/ContexteUtilisateur/);
+  assert.match(app,/contexts\.length!==1/);
+  assert.match(app,/TraiteePar:actor/);
+  assert.match(app,/actor=user\.id/);
+  assert.match(app,/CreeePar:user\.id/);
+  assert.match(app,/Number\(fresh\.AssigneeA\)!==Number\(user\.id\)/);
+});

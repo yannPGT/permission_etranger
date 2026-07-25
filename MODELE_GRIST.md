@@ -15,6 +15,7 @@ Convention : noms techniques ASCII stables. `Ref:X` = référence vers X, `RefLi
 | Table | Colonnes |
 |---|---|
 | Personnel | EmailProConnect Text unique/minuscule requis ; Nom, Prenom Text ; Matricule Text sensible ; Unite Ref:Unites ; Entite Ref:Entites ; Role Ref:Roles ; Actif Bool/true ; Administrateur Bool/false ; GestionnaireUnite Bool/false |
+| ContexteUtilisateur | Personnel Ref:Personnel requis et unique. Une ligne par personnel autorisé ; les ACL ne rendent visible que la ligne correspondant à `user.p.id`. |
 | Unites | CodeUnite Text unique ; LibelleUnite Text ; Entite Ref:Entites ; GestionnairesAdministratifs RefList:Personnel ; ChefDeCorps Ref:Personnel ; ResponsableConformite Ref:Personnel ; Active Bool |
 | Entites | CodeEntite, LibelleEntite ; ChefDeCorps, ResponsableConformite, ResponsableBSPS Ref:Personnel ; Active Bool |
 | Pays | CodePays Text unique ; NomPays Text ; Categorie Ref:CategoriesPays ; Actif Bool |
@@ -27,4 +28,4 @@ Convention : noms techniques ASCII stables. `Ref:X` = référence vers X, `RefLi
 
 Formules indicatives : `CategoriePays=$PaysDestination.Categorie`; unité/entité depuis `$PersonnelConcerne`; `HorsDelai=bool($DateLimiteTraitement and TODAY()>$DateLimiteTraitement and not $Statut.Terminal)`. Le calcul ouvré configurable est préférable dans une colonne formule testée sur la version cible ou lors d'une transition serveur/document, pas dans une donnée libre du formulaire.
 
-Ordre de création : Roles, Statuts, CategoriesPays, EtapesWorkflow, Entites, Unites, Personnel, Pays, Parametres, Demandes, Actions, Historique, HistoriqueParametres. Les CSV `imports/` initialisent les valeurs non sensibles ; responsables, délais et pays restent à renseigner.
+Ordre de création : Roles, Statuts, CategoriesPays, EtapesWorkflow, Entites, Unites, Personnel, ContexteUtilisateur, Pays, Parametres, Demandes, Actions, Historique, HistoriqueParametres. Les CSV `imports/` initialisent les valeurs non sensibles ; responsables, délais et pays restent à renseigner.

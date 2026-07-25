@@ -1,8 +1,8 @@
 (() => {
   'use strict';
   const W = window.WorkflowCore;
-  const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays'];
-  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null};
+  const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','ContexteUtilisateur'];
+  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null};
   const $ = (s) => document.querySelector(s);
   const nowSeconds = () => Date.now() / 1000;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -32,7 +32,19 @@
     const d=ref('Demandes',a.Demande), dv=d?demandeView(d):null, etape=ref('EtapesWorkflow',a.Etape);
     return {...a, demande:d, demandeView:dv, EtapeCode:etape?.Code||'', EtapeLibelle:etape?.Libelle||''};
   }
-  function pendingActions(){return (state.data.Actions||[]).filter(a=>['A_FAIRE','EN_COURS'].includes(a.StatutAction)).map(actionView).filter(a=>a.demande);}
+  function requireCurrentUser(){
+    if(!state.currentUser)throw Error('Utilisateur Grist non reconnu ou contexte utilisateur ambigu.');
+    return state.currentUser;
+  }
+  function resolveCurrentUser(){
+    const contexts=state.data.ContexteUtilisateur||[];
+    if(contexts.length!==1)throw Error(`ContexteUtilisateur doit retourner exactement une ligne (reçu : ${contexts.length}).`);
+    const personnel=ref('Personnel',contexts[0].Personnel);
+    if(!personnel)throw Error('La ligne ContexteUtilisateur ne référence aucune fiche Personnel accessible.');
+    if(personnel.Actif===false)throw Error('La fiche Personnel de l\'utilisateur est inactive.');
+    state.currentUser=personnel;
+  }
+  function pendingActions(){const user=state.currentUser;return (state.data.Actions||[]).filter(a=>user&&Number(a.AssigneeA)===Number(user.id)&&['A_FAIRE','EN_COURS'].includes(a.StatutAction)).map(actionView).filter(a=>a.demande);}
 
   function render(){
     const demandes=(state.data.Demandes||[]).map(demandeView), tasks=pendingActions(), today=new Date();today.setHours(0,0,0,0);
@@ -56,7 +68,7 @@
     document.querySelectorAll('[data-action-id]').forEach(b=>b.onclick=()=>b.dataset.actionStatus==='A_FAIRE'?takeAction(Number(b.dataset.actionId)):openAction(Number(b.dataset.actionId)));
   }
   function renderFormOptions(){
-    const personnel=(state.data.Personnel||[]).filter(p=>p.Actif!==false), pays=(state.data.Pays||[]).filter(p=>p.Actif!==false);
+    const personnel=state.currentUser?[state.currentUser]:[], pays=(state.data.Pays||[]).filter(p=>p.Actif!==false);
     $('[name=PersonnelConcerne]').innerHTML='<option value="">Choisir</option>'+personnel.map(p=>`<option value="${p.id}" data-unit="${p.Unite||''}">${esc(p.NomComplet)}</option>`).join('');
     $('[name=PaysDestination]').innerHTML='<option value="">Choisir</option>'+pays.map(p=>`<option value="${p.id}">${esc(p.NomPays)}</option>`).join('');
   }
@@ -64,8 +76,8 @@
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite), category=ref('CategoriesPays',d.CategoriePays);
     return [['Personnel',d.PersonnelNom],['Unité',unit?.LibelleUnite],['Entité',entity?.LibelleEntite],['Pays',d.PaysNom],['Catégorie',category?.Libelle],['Séjour',dateText(d.DateDebutSejour)+' → '+dateText(d.DateFinSejour)],['Statut',d.StatutLibelle],['Étape',d.EtapeLibelle],['Urgence',d.Urgente?'Oui — '+(d.JustificationUrgence||'justification absente'):'Non'],['Motif',d.MotifDeplacement],['Date limite',dateText(d.DateLimiteTraitement)]].map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v||'—')}</dd></div>`).join('');
   }
-  function openRequest(id){const d=demandeView(ref('Demandes',id));if(!d)return;state.currentAction=null;state.currentRequest=d;$('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);$('#decisionForm').hidden=true;const canSubmit=['BROUILLON','A_CORRIGER'].includes(d.StatutCode);$('#requestWorkflowActions').hidden=!canSubmit;if(canSubmit){$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Le PDF SOFIA doit être présent dans la colonne Pièces jointes Grist.';}show('detail');}
-  function openAction(id){const raw=ref('Actions',id),a=raw&&actionView(raw);if(!a)return;state.currentAction=a;state.currentRequest=a.demandeView;$('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);const decisions=W.decisionsPour(a.EtapeCode),labels={VALIDER:a.EtapeCode==='VALIDATION_CHEF_CORPS'?'Avis favorable':'Valider',RETOURNER:'Retourner pour correction',REFUSER:'Refuser définitivement',TRANSMETTRE:'Transmettre à la BSPS'};const select=$('#decisionForm [name=Decision]');select.innerHTML='<option value="">Choisir</option>'+decisions.map(x=>`<option value="${x}">${esc(labels[x])}</option>`).join('');$('#decisionForm').hidden=false;show('detail');}
+  function openRequest(id){const d=demandeView(ref('Demandes',id));if(!d)return;const user=requireCurrentUser();state.currentAction=null;state.currentRequest=d;$('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);$('#decisionForm').hidden=true;const isAuthor=[d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id));const canSubmit=isAuthor&&['BROUILLON','A_CORRIGER'].includes(d.StatutCode);$('#requestWorkflowActions').hidden=!canSubmit;if(canSubmit){$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Le PDF SOFIA doit être présent dans la colonne Pièces jointes Grist.';}show('detail');}
+  function openAction(id){const user=requireCurrentUser(),raw=ref('Actions',id),a=raw&&actionView(raw);if(!a||Number(a.AssigneeA)!==Number(user.id)){notice('Cette action ne vous est pas assignée.','error');return;}state.currentAction=a;state.currentRequest=a.demandeView;$('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);const decisions=W.decisionsPour(a.EtapeCode),labels={VALIDER:a.EtapeCode==='VALIDATION_CHEF_CORPS'?'Avis favorable':'Valider',RETOURNER:'Retourner pour correction',REFUSER:'Refuser définitivement',TRANSMETTRE:'Transmettre à la BSPS'};const select=$('#decisionForm [name=Decision]');select.innerHTML='<option value="">Choisir</option>'+decisions.map(x=>`<option value="${x}">${esc(labels[x])}</option>`).join('');$('#decisionForm').hidden=false;show('detail');}
 
   function rowByCode(table,codeValue){const r=state.index[table+'ByCode']?.get(codeValue);if(!r)throw Error(`${table} : code ${codeValue} introuvable.`);return r;}
   function effectiveResponsible(d,stepCode){
@@ -78,7 +90,7 @@
   async function takeAction(id){
     if(state.busy)return;if(!state.grist){openAction(id);notice('Prise en charge simulée : aucune écriture réelle.');return;}state.busy=true;
     try{
-      const action=ref('Actions',id);if(!action||action.StatutAction!=='A_FAIRE')throw Error('Cette action n’est plus disponible.');
+      const user=requireCurrentUser(),action=ref('Actions',id);if(!action||Number(action.AssigneeA)!==Number(user.id)||action.StatutAction!=='A_FAIRE')throw Error('Cette action ne vous est pas assignée ou n’est plus disponible.');
       await grist.docApi.applyUserActions([['UpdateRecord','Actions',id,{StatutAction:'EN_COURS',DateAccuseReception:action.DateAccuseReception||nowSeconds(),DatePriseEnCharge:nowSeconds()}]]);
       await refresh();openAction(id);notice('Action prise en charge. Vous pouvez maintenant enregistrer votre décision.','success');
     }catch(e){notice('Prise en charge impossible : '+e.message,'error');}
@@ -89,6 +101,7 @@
     const fetched=await Promise.all(TABLES.map(t=>grist.docApi.fetchTable(t)));
     TABLES.forEach((t,i)=>state.data[t]=rows(fetched[i]));
     makeIndex('Demandes');makeIndex('Pays','CodePays');makeIndex('Actions');makeIndex('Personnel');makeIndex('Roles','CodeRole');makeIndex('Statuts','Code');makeIndex('EtapesWorkflow','Code');makeIndex('Entites','CodeEntite');makeIndex('Unites','CodeUnite');makeIndex('CategoriesPays','CodeCategorie');
+    resolveCurrentUser();
     render();
   }
   async function decide(form){
@@ -99,9 +112,9 @@
     if(!confirm('Confirmer cette décision ? Elle sera inscrite dans l’historique.'))return;
     state.busy=true;const submit=form.querySelector('[type=submit]');submit.disabled=true;
     try{
-      const fresh=rows(await grist.docApi.fetchTable('Actions')).find(x=>Number(x.id)===Number(action.id));
-      if(!fresh||!['A_FAIRE','EN_COURS'].includes(fresh.StatutAction))throw Error('Cette action a déjà été traitée. Actualisez le widget.');
-      const nextStatus=rowByCode('Statuts',next.statut), nextStep=rowByCode('EtapesWorkflow',next.etape), isReturn=decision==='RETOURNER', isTerminal=W.TERMINAUX.has(next.statut), actor=action.AssigneeA||null, nextResponsible=isReturn?(d.Demandeur||d.CreeePar||null):effectiveResponsible(d,next.etape);
+      const user=requireCurrentUser(),fresh=rows(await grist.docApi.fetchTable('Actions')).find(x=>Number(x.id)===Number(action.id));
+      if(!fresh||Number(fresh.AssigneeA)!==Number(user.id)||fresh.StatutAction!=='EN_COURS')throw Error('Cette action ne vous est pas assignée, n’a pas été prise en charge ou a déjà été traitée.');
+      const nextStatus=rowByCode('Statuts',next.statut), nextStep=rowByCode('EtapesWorkflow',next.etape), isReturn=decision==='RETOURNER', isTerminal=W.TERMINAUX.has(next.statut), actor=user.id, nextResponsible=isReturn?(d.Demandeur||d.CreeePar||null):effectiveResponsible(d,next.etape);
       if(!isReturn&&!isTerminal&&!nextResponsible)throw Error('Aucun responsable actif n’est configuré pour l’étape suivante.');
       const actionStatus=isReturn?'RETOURNEE':'TRAITEE', normalized={VALIDER:'VALIDEE',RETOURNER:'RETOUR_CORRECTION',REFUSER:'REFUSEE',TRANSMETTRE:'TRANSMISE_BSPS'}[decision];
       const actions=[
@@ -130,7 +143,9 @@
       if(!responsible)throw Error('Aucun responsable n’est configuré pour l’étape cible.');
       if(!confirm(target.incrementVersion?'Soumettre à nouveau cette demande ?':'Soumettre cette demande ?'))return;
       state.busy=true;$('#submitRequest').disabled=true;
-      const version=Number(d.Version||1)+(target.incrementVersion?1:0),actor=d.Demandeur||d.CreeePar||d.PersonnelConcerne||null;
+      const user=requireCurrentUser();
+      if(![d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id)))throw Error('Vous n’êtes pas l\'auteur de cette demande.');
+      const version=Number(d.Version||1)+(target.incrementVersion?1:0),actor=user.id;
       await grist.docApi.applyUserActions([
         ['UpdateRecord','Demandes',d.id,{Version:version,Statut:status.id,EtapeActuelle:step.id,ResponsableActuel:responsible,DateSoumission:nowSeconds(),DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1}],
         ['AddRecord','Actions',null,{Demande:d.id,Etape:step.id,VersionDemande:version,AssigneeA:responsible,RoleAssigne:role.id,StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}],
@@ -143,11 +158,11 @@
   async function createDraft(form,submit){
     if(state.busy)return;const fd=new FormData(form),d=Object.fromEntries(fd);d.Urgente=fd.has('Urgente');const errors=W.valide(d),file=fd.get('Pdf');if(file&&file.size&&(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf')))errors.push('Seuls les fichiers PDF sont autorisés.');if(errors.length){notice(errors.join(' '),'error');return;}if(!confirm('Enregistrer ce brouillon ?'))return;
     state.busy=true;submit.disabled=true;
-    try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`;await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,Version:1,Revision:0,PersonnelConcerne:Number(d.PersonnelConcerne),PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé. Ajoutez le PDF dans Grist avant soumission.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
+    try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,Unite:user.Unite,Entite:user.Entite,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé. Ajoutez le PDF dans Grist avant soumission.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
   }
   function demo(){
-    state.data={Statuts:[{id:1,Code:'A_CONTROLER',Libelle:'À contrôler'},{id:2,Code:'A_CORRIGER',Libelle:'À corriger'}],EtapesWorkflow:[{id:1,Code:'CONTROLE_CONFORMITE',Libelle:'Contrôle de conformité'}],Personnel:[{id:1,NomComplet:'Camille Martin',Actif:true}],Pays:[{id:1,NomPays:'Albanie',Actif:true}],Roles:[],Entites:[],Unites:[],CategoriesPays:[],Demandes:[{id:1,Reference:'DPE-DEMO-0001',PersonnelConcerne:1,PaysDestination:1,Statut:1,EtapeActuelle:1,Urgente:true,DateLimiteTraitement:Date.now()/1000-86400,MotifDeplacement:'Démonstration'}],Actions:[{id:1,Demande:1,Etape:1,StatutAction:'A_FAIRE',DateTransmission:Date.now()/1000}]};
-    ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays'].forEach(t=>makeIndex(t,t==='Roles'?'CodeRole':t==='Statuts'||t==='EtapesWorkflow'?'Code':null));
+    state.data={Statuts:[{id:1,Code:'A_CONTROLER',Libelle:'À contrôler'},{id:2,Code:'A_CORRIGER',Libelle:'À corriger'}],EtapesWorkflow:[{id:1,Code:'CONTROLE_CONFORMITE',Libelle:'Contrôle de conformité'}],Personnel:[{id:1,NomComplet:'Camille Martin',Actif:true}],ContexteUtilisateur:[{id:1,Personnel:1}],Pays:[{id:1,NomPays:'Albanie',Actif:true}],Roles:[],Entites:[],Unites:[],CategoriesPays:[],Demandes:[{id:1,Reference:'DPE-DEMO-0001',CreeePar:1,Demandeur:1,PersonnelConcerne:1,PaysDestination:1,Statut:1,EtapeActuelle:1,Urgente:true,DateLimiteTraitement:Date.now()/1000-86400,MotifDeplacement:'Démonstration'}],Actions:[{id:1,Demande:1,Etape:1,AssigneeA:1,StatutAction:'A_FAIRE',DateTransmission:Date.now()/1000}]};
+    ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays'].forEach(t=>makeIndex(t,t==='Roles'?'CodeRole':t==='Statuts'||t==='EtapesWorkflow'?'Code':null));resolveCurrentUser();
     $('#mode').textContent='Mode démonstration — aucune écriture réelle';render();
   }
   async function init(){
