@@ -1,7 +1,7 @@
 # Guide d'installation
 
 1. Créer un document Grist de recette. Créer les tables dans l'ordre de `MODELE_GRIST.md`, puis importer `imports/*.csv` avec séparateur `;` et UTF-8.
-2. Compléter rôles, entités, unités, personnel et pays. Normaliser tous les courriels ProConnect en minuscules. Renseigner les trois délais ; ne pas activer le workflow tant qu'ils sont vides.
+2. Compléter rôles, entités, unités, personnel et pays. Normaliser tous les courriels ProConnect en minuscules. Créer une ligne `ContexteUtilisateur` par fiche Personnel. Renseigner les trois délais ; ne pas activer le workflow tant qu'ils sont vides.
 3. Configurer les références, formules et validations. Ajouter l'attribut utilisateur `p` et les ACL décrites dans `REGLES_ACCES_GRIST.md`. Tester avec deux unités avant données réelles.
 4. Pour la recette GitHub Pages, `index.html` charge actuellement `https://docs.getgrist.com/grist-plugin-api.js`. Pour la production, héberger le dossier `widget/` sur un serveur HTTPS interne approuvé, servir `grist-plugin-api.js` depuis l'instance ou un emplacement interne approuvé et remplacer cette URL avant validation SSI. Appliquer au minimum `default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://INSTANCE-GRIST; frame-ancestors https://INSTANCE-GRIST`.
 5. Dans Grist : ajouter un widget Custom, URL interne, accès **Full document access**. Cette permission est requise pour écrire plusieurs tables ; n'approuver que l'origine interne auditée.

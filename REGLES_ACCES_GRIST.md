@@ -18,6 +18,7 @@ Créer un attribut utilisateur `p` depuis la table Personnel avec `EmailProConne
 Principes de conditions (syntaxe exacte à valider sur la version cible) : administrateur `user.p.Administrateur`; propriétaire `rec.CreeePar == user.p.id or rec.Demandeur == user.p.id or rec.PersonnelConcerne == user.p.id`; unité `rec.Unite == user.p.Unite and user.p.GestionnaireUnite`; assigné `rec.ResponsableActuel == user.p.id`; chef `rec.Entite == user.p.Entite and user.p.Role.CodeRole == 'CHEF_CORPS'`; BSPS `rec.Entite.ResponsableBSPS == user.p.id` et statut pertinent.
 
 - Personnel : lecture propre ligne ; gestionnaire seulement `rec.Unite == user.p.Unite`; admin tout. Masquer Matricule et indicateurs administratifs aux non-admin. Interdire aux gestionnaires d'écrire Role, Unite, Entite, Actif, Administrateur.
+- ContexteUtilisateur : une ligne par Personnel. Pour `R`, laisser OWNER/admin neutres, autoriser `rec.Personnel == user.p.id`, puis refuser `True`. OWNER/admin peuvent conserver `UCD`. Le widget exige exactement une ligne visible.
 - Demandes : autoriser les lectures selon la matrice. Écriture auteur uniquement pour `BROUILLON` ou `A_CORRIGER`, et interdire Unite/Entite/CreeePar/Version/Statut en écriture directe. Les transitions sont réservées au rôle responsable.
 - Actions : lecture si la demande est visible ; ajout/modification par rôle assigné ou admin. Interdire la modification après traitement.
 - Historique et HistoriqueParametres : lecture alignée sur la demande / admin ; ajout via transition ; aucune mise à jour ni suppression ordinaire.
