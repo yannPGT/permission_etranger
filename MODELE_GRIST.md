@@ -24,8 +24,10 @@ Convention : noms techniques ASCII stables. `Ref:X` = référence vers X, `RefLi
 | Roles | CodeRole, Libelle et dix booléens de capacité fournis dans `imports/Roles.csv` |
 | Parametres | Cle Text unique ; Valeur Text ; TypeValeur Choice ; Description Text ; ModifieLe DateTime ; ModifiePar Ref:Personnel |
 | HistoriqueParametres | Parametre Ref:Parametres ; AncienneValeur/NouvelleValeur Text ; DateHeure DateTime ; Administrateur Ref:Personnel. Ajout seul. |
+| DemandeInscription | Personnel Ref:Personnel ; EmailConnexion Text auteur ; Nom/Prenom/Matricule ; UniteDemandee Ref:Unites ; DateDemande DateTime ; Statut Choice ; commentaires ; VerifiePar Ref:Personnel ; DateVerification DateTime. |
+| DemandeDroits | Personnel Ref:Personnel ; EmailConnexion Text auteur ; RoleActuel formule ; RoleDemande Ref:Roles ; GestionnaireUniteDemande/AdministrateurDemande Bool ; Motif ; DateDemande DateTime ; Statut Choice ; CommentaireAdministrateur ; TraitePar Ref:Personnel ; DateTraitement DateTime. |
 | Statuts | Code Text unique ; Libelle Text ; Terminal Bool |
 
 Formules indicatives : `CategoriePays=$PaysDestination.Categorie`; unité/entité depuis `$PersonnelConcerne`; `HorsDelai=bool($DateLimiteTraitement and TODAY()>$DateLimiteTraitement and not $Statut.Terminal)`. Le calcul ouvré configurable est préférable dans une colonne formule testée sur la version cible ou lors d'une transition serveur/document, pas dans une donnée libre du formulaire.
 
-Ordre de création : Roles, Statuts, CategoriesPays, EtapesWorkflow, Entites, Unites, Personnel, ContexteUtilisateur, Pays, Parametres, Demandes, Actions, Historique, HistoriqueParametres. Les CSV `imports/` initialisent les valeurs non sensibles ; responsables, délais et pays restent à renseigner.
+Ordre de création : Roles, Statuts, CategoriesPays, EtapesWorkflow, Entites, Unites, Personnel, ContexteUtilisateur, Pays, Parametres, Demandes, Actions, Historique, HistoriqueParametres, DemandeInscription, DemandeDroits. Les CSV `imports/` initialisent les valeurs non sensibles ; responsables, délais et pays restent à renseigner.

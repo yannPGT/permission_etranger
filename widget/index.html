@@ -13,6 +13,10 @@
       <button data-view="dashboard" aria-current="page">Tableau de bord</button>
       <button data-view="tasks">Mes actions <span id="taskBadge" class="badge">0</span></button>
       <button data-view="form">Nouvelle demande</button>
+      <button data-view="profile">Compléter mon profil</button>
+      <button data-view="rights">Demander des droits</button>
+      <button id="enrollmentNav" data-view="enrollments" hidden>Inscriptions à vérifier</button>
+      <button id="rightsAdminNav" data-view="rightsAdmin" hidden>Demandes de droits</button>
     </nav>
   </header>
   <main>
@@ -65,6 +69,41 @@
         <label>Commentaire <textarea name="Commentaire"></textarea></label>
         <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Confirmer la décision</button></div>
       </form>
+    </section>
+
+    <section id="profile" hidden>
+      <h1>Compléter mon profil</h1>
+      <form id="profileForm">
+        <label>Nom* <input name="Nom" required maxlength="100"></label>
+        <label>Prénom* <input name="Prenom" required maxlength="100"></label>
+        <label>Matricule <input name="Matricule" maxlength="50"></label>
+        <label>Unité demandée* <select name="UniteDemandee" required></select></label>
+        <label>Commentaire <textarea name="CommentaireDemandeur"></textarea></label>
+        <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Envoyer pour vérification</button></div>
+      </form>
+      <div id="profileStatus" class="status-panel"></div>
+    </section>
+
+    <section id="rights" hidden>
+      <h1>Demander des droits</h1>
+      <form id="rightsForm">
+        <label>Rôle souhaité <select name="RoleDemande"></select></label>
+        <label class="inline"><input type="checkbox" name="GestionnaireUniteDemande"> Droits de gestionnaire d’unité</label>
+        <label class="inline"><input type="checkbox" name="AdministrateurDemande"> Droits administrateur</label>
+        <label>Motif* <textarea name="Motif" required></textarea></label>
+        <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Envoyer la demande</button></div>
+      </form>
+      <div id="rightsStatus" class="status-panel"></div>
+    </section>
+
+    <section id="enrollments" hidden>
+      <div class="section-title"><div><h1>Inscriptions à vérifier</h1><p>Demandes relevant de votre unité.</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Personnel</th><th>Nom</th><th>Unité</th><th>Statut</th><th>Commentaire</th><th></th></tr></thead><tbody id="enrollmentRows"></tbody></table></div>
+    </section>
+
+    <section id="rightsAdmin" hidden>
+      <div class="section-title"><div><h1>Demandes de droits</h1><p>Validation et application réservées aux administrateurs.</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Personnel</th><th>Rôle demandé</th><th>Options</th><th>Motif</th><th>Statut</th><th></th></tr></thead><tbody id="rightsAdminRows"></tbody></table></div>
     </section>
   </main>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>

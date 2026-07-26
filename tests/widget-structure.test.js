@@ -7,8 +7,8 @@ const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const core=fs.readFileSync(path.join(root,'workflow-core.js'),'utf8');
 
-test('les trois vues principales existent',()=>{
-  for(const id of ['dashboard','tasks','form','detail'])assert.match(html,new RegExp(`id="${id}"`));
+test('les vues principales existent',()=>{
+  for(const id of ['dashboard','tasks','form','detail','profile','rights','enrollments','rightsAdmin'])assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/data-view="tasks"/);
 });
 test('tous les identifiants DOM directs utilisés par le script existent',()=>{
@@ -31,4 +31,11 @@ test('identité Grist obligatoire et utilisée pour les actions',()=>{
   assert.match(app,/actor=user\.id/);
   assert.match(app,/CreeePar:user\.id/);
   assert.match(app,/Number\(fresh\.AssigneeA\)!==Number\(user\.id\)/);
+});
+test('demandes de profil et de droits soumises à Grist',()=>{
+  for(const table of ['DemandeInscription','DemandeDroits'])assert.match(app,new RegExp(table));
+  assert.match(app,/submitProfile/);
+  assert.match(app,/submitRights/);
+  assert.match(app,/reviewEnrollment/);
+  assert.match(app,/reviewRights/);
 });
