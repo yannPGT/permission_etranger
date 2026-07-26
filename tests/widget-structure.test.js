@@ -8,7 +8,7 @@ const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const core=fs.readFileSync(path.join(root,'workflow-core.js'),'utf8');
 
 test('les vues principales existent',()=>{
-  for(const id of ['dashboard','tasks','form','detail','profile','rights','enrollments','rightsAdmin'])assert.match(html,new RegExp(`id="${id}"`));
+  for(const id of ['dashboard','tasks','form','detail','profile','rights','enrollments','rightsAdmin','personnelAdmin'])assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/data-view="tasks"/);
 });
 test('tous les identifiants DOM directs utilisés par le script existent',()=>{
@@ -38,4 +38,11 @@ test('demandes de profil et de droits soumises à Grist',()=>{
   assert.match(app,/submitRights/);
   assert.match(app,/reviewEnrollment/);
   assert.match(app,/reviewRights/);
+});
+test('ajout de personnel sécurisé et import CSV local',()=>{
+  for(const id of ['personnelForm','personnelCsv','importPersonnel','personnelPreviewRows'])assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(app,/toUpperCase\(\)==='UTILISATEUR'/);
+  assert.match(app,/Administrateur:false,GestionnaireUnite:false/);
+  assert.match(app,/AddRecord','ContexteUtilisateur'/);
+  assert.doesNotMatch(app,/FileReader|XMLHttpRequest|fetch\s*\(/);
 });

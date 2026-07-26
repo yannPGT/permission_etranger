@@ -27,3 +27,19 @@ Principes de conditions (syntaxe exacte à valider sur la version cible) : admin
 - Export : seulement depuis une vue/table dont les ACL sont identiques ; ne jamais utiliser une clé API partagée.
 
 Test : créer six comptes fictifs (deux unités), activer les ACL, utiliser des sessions séparées et vérifier tables brutes, références, widget, formulaires, export et URL de PJ. Un gestionnaire U1 ne doit retrouver aucun identifiant, nom ou fichier de U2. Les ACL exactes doivent être saisies et validées sur l'instance cible : le dépôt ne peut pas les installer à distance.
+
+## Exception contrôlée pour l'ajout de personnel
+
+L'interdiction de modification des colonnes sensibles par un gestionnaire reste valable pour les lignes existantes. Pour permettre uniquement la création depuis le widget, ajouter une autorisation `C` sur `Personnel` avec une condition équivalente à :
+
+```python
+user.p and user.p.Actif and user.p.GestionnaireUnite and newRec.Unite == user.p.Unite and newRec.Entite == user.p.Entite and newRec.Role == 1 and newRec.Actif and not newRec.Administrateur and not newRec.GestionnaireUnite
+```
+
+Dans `ContexteUtilisateur`, ajouter les colonnes formule `PersonnelUnite` (`$Personnel.Unite`), `PersonnelEntite` (`$Personnel.Entite`), `PersonnelRole` (`$Personnel.Role`) et `PersonnelActif` (`$Personnel.Actif`). Autoriser ensuite `C` uniquement pour la fiche nouvellement créée dans le périmètre du gestionnaire :
+
+```python
+user.p and user.p.Actif and user.p.GestionnaireUnite and newRec.PersonnelUnite == user.p.Unite and newRec.PersonnelEntite == user.p.Entite and newRec.PersonnelRole == 1 and newRec.PersonnelActif
+```
+
+Conserver une règle finale `True` refusant les opérations non explicitement autorisées. Le numéro `1` correspond à l'identifiant du rôle `UTILISATEUR` dans le document cible. Les références chaînées ne sont pas utilisées directement dans les ACL : les quatre colonnes formule exposent les valeurs nécessaires. Tester obligatoirement : ajout dans l'unité propre, refus dans une autre unité, refus d'un rôle privilégié et refus des indicateurs administratifs. L'invitation dans « Gérer les utilisateurs » demeure une opération séparée.

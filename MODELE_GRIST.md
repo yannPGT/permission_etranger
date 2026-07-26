@@ -15,7 +15,7 @@ Convention : noms techniques ASCII stables. `Ref:X` = référence vers X, `RefLi
 | Table | Colonnes |
 |---|---|
 | Personnel | EmailProConnect Text unique/minuscule requis ; Nom, Prenom Text ; Matricule Text sensible ; Unite Ref:Unites ; Entite Ref:Entites ; Role Ref:Roles ; Actif Bool/true ; Administrateur Bool/false ; GestionnaireUnite Bool/false |
-| ContexteUtilisateur | Personnel Ref:Personnel requis et unique. Une ligne par personnel autorisé ; les ACL ne rendent visible que la ligne correspondant à `user.p.id`. |
+| ContexteUtilisateur | Personnel Ref:Personnel requis et unique ; PersonnelUnite Ref:Unites formule `$Personnel.Unite` ; PersonnelEntite Ref:Entites formule `$Personnel.Entite` ; PersonnelRole Ref:Roles formule `$Personnel.Role` ; PersonnelActif Bool formule `$Personnel.Actif`. Une ligne par personnel autorisé ; les ACL ne rendent visible que la ligne correspondant à `user.p.id`. |
 | Unites | CodeUnite Text unique ; LibelleUnite Text ; Entite Ref:Entites ; GestionnairesAdministratifs RefList:Personnel ; ChefDeCorps Ref:Personnel ; ResponsableConformite Ref:Personnel ; Active Bool |
 | Entites | CodeEntite, LibelleEntite ; ChefDeCorps, ResponsableConformite, ResponsableBSPS Ref:Personnel ; Active Bool |
 | Pays | CodePays Text unique ; NomPays Text ; Categorie Ref:CategoriesPays ; Actif Bool |

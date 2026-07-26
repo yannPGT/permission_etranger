@@ -14,3 +14,5 @@ python migration/migrate_resana.py source-resana.csv --out migration/output
 ```
 
 Lire `HYPOTHESES.md` et `GUIDE_INSTALLATION.md` avant tout déploiement. Les données historiques RESANA, les URL de pièces jointes et les fichiers générés par la migration sont exclus du dépôt.
+
+Le bandeau du widget regroupe les fonctions dans les espaces « Dossiers », « Mon compte » et « Gestion ». Les gestionnaires d'unité et administrateurs disposent d'un ajout individuel de personnel et d'un import CSV avec aperçu local.

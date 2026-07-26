@@ -11,3 +11,11 @@ Après soumission, le dossier est verrouillé. Un retour affiche le motif et ren
 Le responsable conformité peut valider, retourner avec motif ou refuser selon son rôle. Le chef de corps fait de même à son étape. La BSPS transmet et termine le workflow. « ⚠ Hors délai » reste traitable.
 
 L'export s'effectue avec la fonction XLSX native Grist depuis une vue autorisée. Signaler immédiatement toute donnée d'une autre unité visible. Aucun courriel ni notification externe n'est envoyé.
+
+## Ajouter du personnel
+
+Le menu « Gestion > Personnel » est visible uniquement pour un gestionnaire d'unité ou un administrateur. Un gestionnaire ne peut choisir que sa propre unité. Toute fiche créée par cet écran est active, sans privilège administrateur ou gestionnaire, et reçoit le rôle `UTILISATEUR`.
+
+Pour un import groupé, utiliser un CSV UTF-8 avec les colonnes `EmailProConnect;Nom;Prenom;Matricule;CodeUnite`. Le widget contrôle les unités, courriels et doublons, puis affiche un aperçu avant l'import. Le fichier est lu localement et n'est envoyé à aucun serveur tiers. La limite est de 500 lignes et 2 Mo.
+
+L'ajout d'une fiche `Personnel` ne donne pas, à lui seul, accès au document. Chaque personne doit encore être invitée avec son adresse exacte dans « Gérer les utilisateurs » de Grist. Les droits supérieurs restent attribués par l'administrateur via le circuit de demande de droits.

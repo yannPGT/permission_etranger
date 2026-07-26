@@ -10,13 +10,20 @@
   <header>
     <div class="brand"><img class="logo" src="assets/logo-bspp.png" alt="Logo BSPP"><div><strong>Permissions à l’étranger</strong><small id="mode">Connexion à Grist…</small></div></div>
     <nav aria-label="Navigation principale">
-      <button data-view="dashboard" aria-current="page">Tableau de bord</button>
-      <button data-view="tasks">Mes actions <span id="taskBadge" class="badge">0</span></button>
-      <button data-view="form">Nouvelle demande</button>
-      <button data-view="profile">Compléter mon profil</button>
-      <button data-view="rights">Demander des droits</button>
-      <button id="enrollmentNav" data-view="enrollments" hidden>Inscriptions à vérifier</button>
-      <button id="rightsAdminNav" data-view="rightsAdmin" hidden>Demandes de droits</button>
+      <div class="nav-group"><span class="nav-label">Dossiers</span><div class="nav-buttons">
+        <button data-view="dashboard" aria-current="page" title="Consulter les demandes visibles dans votre périmètre">Tableau de bord</button>
+        <button data-view="tasks" title="Prendre en charge les actions qui vous sont assignées">Mes actions <span id="taskBadge" class="badge">0</span></button>
+        <button data-view="form" title="Créer une nouvelle demande de permission à l’étranger">Nouvelle demande</button>
+      </div></div>
+      <div class="nav-group"><span class="nav-label">Mon compte</span><div class="nav-buttons">
+        <button data-view="profile" title="Compléter ou corriger les informations de votre profil">Compléter mon profil</button>
+        <button data-view="rights" title="Demander un rôle ou des droits supplémentaires">Demander des droits</button>
+      </div></div>
+      <div class="nav-group" id="managementNavGroup" hidden><span class="nav-label">Gestion</span><div class="nav-buttons">
+        <button id="enrollmentNav" data-view="enrollments" hidden title="Vérifier les demandes d’inscription de votre unité">Inscriptions</button>
+        <button id="rightsAdminNav" data-view="rightsAdmin" hidden title="Approuver et appliquer les demandes de droits">Droits</button>
+        <button id="personnelNav" data-view="personnelAdmin" hidden title="Ajouter une personne ou importer un fichier CSV">Personnel</button>
+      </div></div>
     </nav>
   </header>
   <main>
@@ -104,6 +111,23 @@
     <section id="rightsAdmin" hidden>
       <div class="section-title"><div><h1>Demandes de droits</h1><p>Validation et application réservées aux administrateurs.</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>Personnel</th><th>Rôle demandé</th><th>Options</th><th>Motif</th><th>Statut</th><th></th></tr></thead><tbody id="rightsAdminRows"></tbody></table></div>
+    </section>
+
+    <section id="personnelAdmin" hidden>
+      <h1>Ajouter du personnel</h1>
+      <p class="hint">Les gestionnaires sont limités à leur unité. Les nouveaux personnels reçoivent uniquement le rôle UTILISATEUR.</p>
+      <form id="personnelForm">
+        <label>Adresse de connexion* <input type="email" name="EmailProConnect" required></label>
+        <label>Nom* <input name="Nom" required maxlength="100"></label>
+        <label>Prénom* <input name="Prenom" required maxlength="100"></label>
+        <label>Matricule <input name="Matricule" maxlength="50"></label>
+        <label>Unité* <select name="Unite" required></select></label>
+        <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Ajouter le personnel</button></div>
+      </form>
+      <h2>Import CSV</h2>
+      <p class="hint">Colonnes attendues : <code>EmailProConnect;Nom;Prenom;Matricule;CodeUnite</code>. Aucun fichier n’est envoyé hors du navigateur.</p>
+      <div class="import-box"><input id="personnelCsv" type="file" accept=".csv,text/csv"><button id="importPersonnel" type="button" class="primary" disabled>Importer les lignes valides</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>Email</th><th>Nom</th><th>Prénom</th><th>Unité</th><th>Validation</th></tr></thead><tbody id="personnelPreviewRows"><tr><td colspan="6">Aucun fichier sélectionné.</td></tr></tbody></table></div>
     </section>
   </main>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>

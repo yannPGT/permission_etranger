@@ -2,7 +2,7 @@
   'use strict';
   const W = window.WorkflowCore;
   const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','ContexteUtilisateur','DemandeInscription','DemandeDroits'];
-  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null};
+  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null, personnelImport:[]};
   const $ = (s) => document.querySelector(s);
   const nowSeconds = () => Date.now() / 1000;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -73,10 +73,18 @@
     $('[name=PaysDestination]').innerHTML='<option value="">Choisir</option>'+pays.map(p=>`<option value="${p.id}">${esc(p.NomPays)}</option>`).join('');
   }
   function currentRoleCode(){return code('Roles',state.currentUser?.Role,'CodeRole');}
+  function personnelAccess(){
+    const user=requireCurrentUser(),role=currentRoleCode();
+    return {user,isAdmin:user.Administrateur===true||role==='ADMIN',isManager:user.GestionnaireUnite===true||role==='GESTIONNAIRE'};
+  }
+  function allowedPersonnelUnits(){
+    const {user,isAdmin}=personnelAccess();
+    return (state.data.Unites||[]).filter(u=>u.Active!==false&&(isAdmin||Number(u.id)===Number(user.Unite)));
+  }
   function latestOwn(table){return (state.data[table]||[]).filter(r=>Number(r.Personnel)===Number(state.currentUser?.id)).sort((a,b)=>Number(b.id)-Number(a.id))[0]||null;}
   function openOwn(table){return (state.data[table]||[]).find(r=>Number(r.Personnel)===Number(state.currentUser?.id)&&['EN_ATTENTE','A_COMPLETER'].includes(r.Statut))||null;}
   function renderAccessRequests(){
-    const user=requireCurrentUser(),role=currentRoleCode(),isAdmin=user.Administrateur===true||role==='ADMIN',isManager=user.GestionnaireUnite===true||role==='GESTIONNAIRE';
+    const {user,isAdmin,isManager}=personnelAccess();
     const units=(state.data.Unites||[]).filter(u=>u.Active!==false),roles=(state.data.Roles||[]);
     const enrollment=latestOwn('DemandeInscription'),rights=latestOwn('DemandeDroits');
     const pf=$('#profileForm');pf.elements.Nom.value=enrollment?.Nom||user.Nom||'';pf.elements.Prenom.value=enrollment?.Prenom||user.Prenom||'';pf.elements.Matricule.value=enrollment?.Matricule||user.Matricule||'';
@@ -94,6 +102,67 @@
     $('#rightsAdminNav').hidden=!(isAdmin||rightTasks.length);
     $('#rightsAdminRows').innerHTML=rightTasks.map(r=>{const options=[r.GestionnaireUniteDemande?'Gestionnaire':'',r.AdministrateurDemande?'Administrateur':''].filter(Boolean).join(', ')||'—';const buttons=r.Statut==='APPROUVEE'?`<button class="primary" data-right-id="${r.id}" data-right-action="APPLIQUER">Appliquer</button>`:`<button class="primary" data-right-id="${r.id}" data-right-action="APPROUVEE">Approuver</button><button data-right-id="${r.id}" data-right-action="A_COMPLETER">Complément</button><button data-right-id="${r.id}" data-right-action="REFUSEE">Refuser</button>`;return `<tr><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(label('Roles',r.RoleDemande,'Libelle')||'—')}</td><td>${esc(options)}</td><td>${esc(r.Motif||'')}</td><td>${esc(r.Statut)}</td><td class="row-actions">${buttons}</td></tr>`}).join('')||'<tr><td colspan="6">Aucune demande de droits en attente.</td></tr>';
     document.querySelectorAll('[data-right-id]').forEach(b=>b.onclick=()=>reviewRights(Number(b.dataset.rightId),b.dataset.rightAction));
+    const canAddPersonnel=isAdmin||isManager;
+    $('#managementNavGroup').hidden=!canAddPersonnel&&!enrollmentTasks.length&&!rightTasks.length;
+    $('#personnelNav').hidden=!canAddPersonnel;
+    const personnelUnit=$('#personnelForm').elements.Unite;
+    personnelUnit.innerHTML='<option value="">Choisir</option>'+allowedPersonnelUnits().map(u=>`<option value="${u.id}">${esc(u.LibelleUnite||u.CodeUnite)}</option>`).join('');
+    if(isManager&&!isAdmin&&user.Unite)personnelUnit.value=String(user.Unite);
+    renderPersonnelPreview();
+  }
+
+  function normalizeEmail(value){return String(value||'').trim().toLowerCase();}
+  function roleUtilisateur(){return (state.data.Roles||[]).find(r=>String(r.CodeRole||'').toUpperCase()==='UTILISATEUR');}
+  function validatePersonnel(input,seen=new Set()){
+    const email=normalizeEmail(input.EmailProConnect),unit=allowedPersonnelUnits().find(u=>String(u.id)===String(input.Unite)||String(u.CodeUnite||'').toUpperCase()===String(input.CodeUnite||'').trim().toUpperCase());
+    const errors=[];
+    if(!email||!/^\S+@\S+\.\S+$/.test(email))errors.push('courriel invalide');
+    if(!String(input.Nom||'').trim())errors.push('nom manquant');
+    if(!String(input.Prenom||'').trim())errors.push('prénom manquant');
+    if(!unit)errors.push('unité inconnue ou non autorisée');
+    if(seen.has(email))errors.push('doublon dans le fichier');
+    if((state.data.Personnel||[]).some(p=>normalizeEmail(p.EmailProConnect)===email))errors.push('personnel déjà présent');
+    if(email)seen.add(email);
+    if(!roleUtilisateur())errors.push('rôle UTILISATEUR introuvable');
+    return {...input,EmailProConnect:email,Nom:String(input.Nom||'').trim(),Prenom:String(input.Prenom||'').trim(),Matricule:String(input.Matricule||'').trim(),Unite:unit?.id||null,Entite:unit?.Entite||null,errors,valid:errors.length===0};
+  }
+  function parseCsv(text){
+    const lines=String(text||'').replace(/^\uFEFF/,'').split(/\r?\n/).filter(line=>line.trim());
+    if(!lines.length)return [];
+    const delimiter=(lines[0].match(/;/g)||[]).length>=(lines[0].match(/,/g)||[]).length?';':',';
+    const parse=line=>{const out=[];let value='',quoted=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(quoted&&line[i+1]==='"'){value+='"';i++;}else quoted=!quoted;}else if(c===delimiter&&!quoted){out.push(value.trim());value='';}else value+=c;}out.push(value.trim());return out;};
+    const headers=parse(lines.shift()).map(h=>h.trim());
+    const required=['EmailProConnect','Nom','Prenom','Matricule','CodeUnite'];
+    if(required.some(h=>!headers.includes(h)))throw Error(`En-têtes attendus : ${required.join(';')}`);
+    return lines.map(line=>Object.fromEntries(headers.map((h,i)=>[h,parse(line)[i]||''])));
+  }
+  function renderPersonnelPreview(){
+    const rows=state.personnelImport||[];
+    $('#personnelPreviewRows').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.EmailProConnect)}</td><td>${esc(r.Nom)}</td><td>${esc(r.Prenom)}</td><td>${esc(label('Unites',r.Unite,'LibelleUnite')||r.CodeUnite)}</td><td class="${r.valid?'valid':'late'}">${r.valid?'Prêt':esc(r.errors.join(', '))}</td></tr>`).join('')||'<tr><td colspan="6">Aucun fichier chargé.</td></tr>';
+    $('#importPersonnel').disabled=!rows.some(r=>r.valid)||state.busy;
+  }
+  async function createPersonnel(input){
+    const checked=validatePersonnel(input);if(!checked.valid)throw Error(checked.errors.join(', '));
+    const role=roleUtilisateur(),fields={EmailProConnect:checked.EmailProConnect,Nom:checked.Nom,Prenom:checked.Prenom,Matricule:checked.Matricule,Unite:checked.Unite,Entite:checked.Entite,Role:role.id,Actif:true,Administrateur:false,GestionnaireUnite:false};
+    await grist.docApi.applyUserActions([['AddRecord','Personnel',null,fields]]);
+    const personnel=rows(await grist.docApi.fetchTable('Personnel')).find(p=>normalizeEmail(p.EmailProConnect)===checked.EmailProConnect);
+    if(!personnel)throw Error('fiche créée mais impossible à relire');
+    const contexts=rows(await grist.docApi.fetchTable('ContexteUtilisateur'));
+    if(!contexts.some(c=>Number(c.Personnel)===Number(personnel.id)))await grist.docApi.applyUserActions([['AddRecord','ContexteUtilisateur',null,{Personnel:personnel.id}]]);
+  }
+  async function submitPersonnel(form,submit){
+    if(state.busy)return;const fd=new FormData(form),input=Object.fromEntries(fd),checked=validatePersonnel(input);if(!checked.valid){notice(checked.errors.join('. ')+'.','error');return;}
+    if(!confirm(`Ajouter ${checked.Prenom} ${checked.Nom} comme utilisateur standard ?`))return;
+    state.busy=true;submit.disabled=true;try{await createPersonnel(checked);form.reset();await refresh();show('personnelAdmin');notice('Personnel ajouté. Pensez à l’inviter dans « Gérer les utilisateurs » de Grist.','success');}catch(e){notice('Ajout impossible : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
+  }
+  async function loadPersonnelCsv(file){
+    try{if(!file)return;if(file.size>2*1024*1024)throw Error('Le fichier dépasse 2 Mo.');const raw=parseCsv(await file.text());if(raw.length>500)throw Error('Le fichier est limité à 500 lignes par import.');const seen=new Set();state.personnelImport=raw.map(r=>validatePersonnel(r,seen));renderPersonnelPreview();notice(`${state.personnelImport.filter(r=>r.valid).length} ligne(s) prête(s) à importer.`,'success');}catch(e){state.personnelImport=[];renderPersonnelPreview();notice('Lecture CSV impossible : '+e.message,'error');}
+  }
+  async function importPersonnel(){
+    const valid=(state.personnelImport||[]).filter(r=>r.valid);if(state.busy||!valid.length)return;if(!confirm(`Importer ${valid.length} personne(s) ?`))return;
+    state.busy=true;renderPersonnelPreview();let added=0;const failures=[];
+    for(const row of valid){try{await createPersonnel(row);added++;}catch(e){failures.push(`${row.EmailProConnect}: ${e.message}`);}}
+    try{await refresh();show('personnelAdmin');state.personnelImport=[];renderPersonnelPreview();notice(`${added} personne(s) ajoutée(s).${failures.length?' Échecs : '+failures.join(' | '):' N’oubliez pas de les inviter dans Grist.'}`,failures.length?'error':'success');}catch(e){notice(`Import partiellement terminé (${added} ajout(s)) : ${e.message}`,'error');}finally{state.busy=false;renderPersonnelPreview();}
   }
   function detailMarkup(d){
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite), category=ref('CategoriesPays',d.CategoriePays);
@@ -225,6 +294,9 @@
   $('#requestForm').onsubmit=e=>{e.preventDefault();createDraft(e.target,e.submitter);};
   $('#profileForm').onsubmit=e=>{e.preventDefault();submitProfile(e.target,e.submitter);};
   $('#rightsForm').onsubmit=e=>{e.preventDefault();submitRights(e.target,e.submitter);};
+  $('#personnelForm').onsubmit=e=>{e.preventDefault();submitPersonnel(e.target,e.submitter);};
+  $('#personnelCsv').onchange=e=>loadPersonnelCsv(e.target.files[0]);
+  $('#importPersonnel').onclick=importPersonnel;
   $('#submitRequest').onclick=submitCurrentRequest;
   init();
 })();
