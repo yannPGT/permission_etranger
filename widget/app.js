@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const W = window.WorkflowCore;
-  const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','ContexteUtilisateur'];
+  const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','ContexteUtilisateur','DemandeInscription','DemandeDroits'];
   const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null};
   const $ = (s) => document.querySelector(s);
   const nowSeconds = () => Date.now() / 1000;
@@ -54,7 +54,7 @@
     $('#taskBadge').textContent=tasks.length;
     const statuses=[...new Set(demandes.map(d=>d.StatutLibelle).filter(Boolean))];
     $('#filter').innerHTML='<option value="">Tous</option>'+statuses.map(s=>`<option>${esc(s)}</option>`).join('');
-    renderRequests(); renderTasks(); renderFormOptions();
+    renderRequests(); renderTasks(); renderFormOptions(); renderAccessRequests();
   }
   function renderRequests(){
     const q=$('#search').value.toLowerCase(), f=$('#filter').value, today=Date.now()/1000;
@@ -71,6 +71,29 @@
     const personnel=state.currentUser?[state.currentUser]:[], pays=(state.data.Pays||[]).filter(p=>p.Actif!==false);
     $('[name=PersonnelConcerne]').innerHTML='<option value="">Choisir</option>'+personnel.map(p=>`<option value="${p.id}" data-unit="${p.Unite||''}">${esc(p.NomComplet)}</option>`).join('');
     $('[name=PaysDestination]').innerHTML='<option value="">Choisir</option>'+pays.map(p=>`<option value="${p.id}">${esc(p.NomPays)}</option>`).join('');
+  }
+  function currentRoleCode(){return code('Roles',state.currentUser?.Role,'CodeRole');}
+  function latestOwn(table){return (state.data[table]||[]).filter(r=>Number(r.Personnel)===Number(state.currentUser?.id)).sort((a,b)=>Number(b.id)-Number(a.id))[0]||null;}
+  function openOwn(table){return (state.data[table]||[]).find(r=>Number(r.Personnel)===Number(state.currentUser?.id)&&['EN_ATTENTE','A_COMPLETER'].includes(r.Statut))||null;}
+  function renderAccessRequests(){
+    const user=requireCurrentUser(),role=currentRoleCode(),isAdmin=user.Administrateur===true||role==='ADMIN',isManager=user.GestionnaireUnite===true||role==='GESTIONNAIRE';
+    const units=(state.data.Unites||[]).filter(u=>u.Active!==false),roles=(state.data.Roles||[]);
+    const enrollment=latestOwn('DemandeInscription'),rights=latestOwn('DemandeDroits');
+    const pf=$('#profileForm');pf.elements.Nom.value=enrollment?.Nom||user.Nom||'';pf.elements.Prenom.value=enrollment?.Prenom||user.Prenom||'';pf.elements.Matricule.value=enrollment?.Matricule||user.Matricule||'';
+    pf.elements.UniteDemandee.innerHTML='<option value="">Choisir</option>'+units.map(u=>`<option value="${u.id}">${esc(u.LibelleUnite||u.CodeUnite)}</option>`).join('');
+    pf.elements.UniteDemandee.value=String(enrollment?.UniteDemandee||user.Unite||'');pf.elements.CommentaireDemandeur.value=enrollment?.CommentaireDemandeur||'';
+    $('#profileStatus').textContent=enrollment?`Dernière demande : ${enrollment.Statut}${enrollment.CommentaireGestionnaire?'\nCommentaire : '+enrollment.CommentaireGestionnaire:''}`:'Aucune demande de profil en cours.';
+    const rf=$('#rightsForm');rf.elements.RoleDemande.innerHTML='<option value="">Aucun changement de rôle</option>'+roles.map(r=>`<option value="${r.id}">${esc(r.Libelle||r.CodeRole)}</option>`).join('');
+    rf.elements.RoleDemande.value=String(rights?.RoleDemande||'');rf.elements.GestionnaireUniteDemande.checked=rights?.GestionnaireUniteDemande===true;rf.elements.AdministrateurDemande.checked=rights?.AdministrateurDemande===true;rf.elements.Motif.value=rights?.Motif||'';
+    $('#rightsStatus').textContent=rights?`Dernière demande : ${rights.Statut}${rights.CommentaireAdministrateur?'\nCommentaire : '+rights.CommentaireAdministrateur:''}`:'Aucune demande de droits en cours.';
+    const enrollmentTasks=(state.data.DemandeInscription||[]).filter(r=>Number(r.Personnel)!==Number(user.id)&&r.Statut==='EN_ATTENTE');
+    $('#enrollmentNav').hidden=!(isManager||isAdmin||enrollmentTasks.length);
+    $('#enrollmentRows').innerHTML=enrollmentTasks.map(r=>`<tr><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(`${r.Prenom||''} ${r.Nom||''}`.trim())}</td><td>${esc(label('Unites',r.UniteDemandee,'LibelleUnite'))}</td><td>${esc(r.Statut)}</td><td>${esc(r.CommentaireDemandeur||'')}</td><td class="row-actions"><button data-enrollment-id="${r.id}" data-enrollment-status="VERIFIEE" class="primary">Vérifier</button><button data-enrollment-id="${r.id}" data-enrollment-status="A_COMPLETER">Complément</button><button data-enrollment-id="${r.id}" data-enrollment-status="REFUSEE">Refuser</button></td></tr>`).join('')||'<tr><td colspan="6">Aucune inscription en attente.</td></tr>';
+    document.querySelectorAll('[data-enrollment-id]').forEach(b=>b.onclick=()=>reviewEnrollment(Number(b.dataset.enrollmentId),b.dataset.enrollmentStatus));
+    const rightTasks=(state.data.DemandeDroits||[]).filter(r=>Number(r.Personnel)!==Number(user.id)&&['EN_ATTENTE','APPROUVEE'].includes(r.Statut));
+    $('#rightsAdminNav').hidden=!(isAdmin||rightTasks.length);
+    $('#rightsAdminRows').innerHTML=rightTasks.map(r=>{const options=[r.GestionnaireUniteDemande?'Gestionnaire':'',r.AdministrateurDemande?'Administrateur':''].filter(Boolean).join(', ')||'—';const buttons=r.Statut==='APPROUVEE'?`<button class="primary" data-right-id="${r.id}" data-right-action="APPLIQUER">Appliquer</button>`:`<button class="primary" data-right-id="${r.id}" data-right-action="APPROUVEE">Approuver</button><button data-right-id="${r.id}" data-right-action="A_COMPLETER">Complément</button><button data-right-id="${r.id}" data-right-action="REFUSEE">Refuser</button>`;return `<tr><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(label('Roles',r.RoleDemande,'Libelle')||'—')}</td><td>${esc(options)}</td><td>${esc(r.Motif||'')}</td><td>${esc(r.Statut)}</td><td class="row-actions">${buttons}</td></tr>`}).join('')||'<tr><td colspan="6">Aucune demande de droits en attente.</td></tr>';
+    document.querySelectorAll('[data-right-id]').forEach(b=>b.onclick=()=>reviewRights(Number(b.dataset.rightId),b.dataset.rightAction));
   }
   function detailMarkup(d){
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite), category=ref('CategoriesPays',d.CategoriePays);
@@ -100,7 +123,7 @@
     if(!state.grist){demo();return;}
     const fetched=await Promise.all(TABLES.map(t=>grist.docApi.fetchTable(t)));
     TABLES.forEach((t,i)=>state.data[t]=rows(fetched[i]));
-    makeIndex('Demandes');makeIndex('Pays','CodePays');makeIndex('Actions');makeIndex('Personnel');makeIndex('Roles','CodeRole');makeIndex('Statuts','Code');makeIndex('EtapesWorkflow','Code');makeIndex('Entites','CodeEntite');makeIndex('Unites','CodeUnite');makeIndex('CategoriesPays','CodeCategorie');
+    makeIndex('Demandes');makeIndex('Pays','CodePays');makeIndex('Actions');makeIndex('Personnel');makeIndex('Roles','CodeRole');makeIndex('Statuts','Code');makeIndex('EtapesWorkflow','Code');makeIndex('Entites','CodeEntite');makeIndex('Unites','CodeUnite');makeIndex('CategoriesPays','CodeCategorie');makeIndex('DemandeInscription');makeIndex('DemandeDroits');
     resolveCurrentUser();
     render();
   }
@@ -160,9 +183,31 @@
     state.busy=true;submit.disabled=true;
     try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,Unite:user.Unite,Entite:user.Entite,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé. Ajoutez le PDF dans Grist avant soumission.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
   }
+  async function submitProfile(form,submit){
+    if(state.busy)return;const user=requireCurrentUser(),fd=new FormData(form),existing=openOwn('DemandeInscription');
+    const fields={Nom:String(fd.get('Nom')||'').trim(),Prenom:String(fd.get('Prenom')||'').trim(),Matricule:String(fd.get('Matricule')||'').trim(),UniteDemandee:Number(fd.get('UniteDemandee')),CommentaireDemandeur:String(fd.get('CommentaireDemandeur')||'').trim()};
+    if(!fields.Nom||!fields.Prenom||!fields.UniteDemandee){notice('Nom, prénom et unité sont obligatoires.','error');return;}if(existing&&!['EN_ATTENTE','A_COMPLETER'].includes(existing.Statut)){notice('Votre dernière demande ne peut plus être modifiée.','error');return;}
+    state.busy=true;submit.disabled=true;try{const action=existing?['UpdateRecord','DemandeInscription',existing.id,{...fields,...(existing.Statut==='A_COMPLETER'?{Statut:'EN_ATTENTE'}:{})}]:['AddRecord','DemandeInscription',null,{Personnel:user.id,...fields}];await grist.docApi.applyUserActions([action]);await refresh();notice('Demande de profil enregistrée.','success');}catch(e){notice('Demande de profil refusée : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
+  }
+  async function submitRights(form,submit){
+    if(state.busy)return;const user=requireCurrentUser(),fd=new FormData(form),existing=openOwn('DemandeDroits');
+    const fields={RoleDemande:Number(fd.get('RoleDemande'))||null,GestionnaireUniteDemande:fd.has('GestionnaireUniteDemande'),AdministrateurDemande:fd.has('AdministrateurDemande'),Motif:String(fd.get('Motif')||'').trim()};
+    if(!fields.Motif||(!fields.RoleDemande&&!fields.GestionnaireUniteDemande&&!fields.AdministrateurDemande)){notice('Indiquez au moins un droit et son motif.','error');return;}if(existing&&!['EN_ATTENTE','A_COMPLETER'].includes(existing.Statut)){notice('Votre dernière demande ne peut plus être modifiée.','error');return;}
+    state.busy=true;submit.disabled=true;try{const action=existing?['UpdateRecord','DemandeDroits',existing.id,{...fields,...(existing.Statut==='A_COMPLETER'?{Statut:'EN_ATTENTE'}:{})}]:['AddRecord','DemandeDroits',null,{Personnel:user.id,...fields}];await grist.docApi.applyUserActions([action]);await refresh();notice('Demande de droits enregistrée.','success');}catch(e){notice('Demande de droits refusée : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
+  }
+  async function reviewEnrollment(id,status){
+    if(state.busy)return;const row=ref('DemandeInscription',id);if(!row||row.Statut!=='EN_ATTENTE')return;const comment=status==='VERIFIEE'?'':String(prompt(status==='A_COMPLETER'?'Précisez les informations manquantes :':'Précisez le motif du refus :')||'').trim();if(status!=='VERIFIEE'&&!comment)return;
+    state.busy=true;try{await grist.docApi.applyUserActions([['UpdateRecord','DemandeInscription',id,{Statut:status,CommentaireGestionnaire:comment}]]);await refresh();notice('Décision d\'inscription enregistrée.','success');}catch(e){notice('Décision refusée : '+e.message,'error');}finally{state.busy=false;}
+  }
+  async function reviewRights(id,action){
+    if(state.busy)return;const row=ref('DemandeDroits',id);if(!row)return;let actions=[];
+    if(action==='APPLIQUER'){if(row.Statut!=='APPROUVEE')return;const changes={};if(row.RoleDemande)changes.Role=row.RoleDemande;if(row.GestionnaireUniteDemande)changes.GestionnaireUnite=true;if(row.AdministrateurDemande)changes.Administrateur=true;actions=[['UpdateRecord','Personnel',row.Personnel,changes],['UpdateRecord','DemandeDroits',id,{Statut:'TRAITEE'}]];}
+    else{if(row.Statut!=='EN_ATTENTE')return;const comment=action==='APPROUVEE'?'':String(prompt(action==='A_COMPLETER'?'Précisez les informations manquantes :':'Précisez le motif du refus :')||'').trim();if(action!=='APPROUVEE'&&!comment)return;actions=[['UpdateRecord','DemandeDroits',id,{Statut:action,CommentaireAdministrateur:comment}]];}
+    state.busy=true;try{await grist.docApi.applyUserActions(actions);await refresh();notice(action==='APPLIQUER'?'Droits appliqués au personnel.':'Décision administrative enregistrée.','success');}catch(e){notice('Traitement refusé : '+e.message,'error');}finally{state.busy=false;}
+  }
   function demo(){
-    state.data={Statuts:[{id:1,Code:'A_CONTROLER',Libelle:'À contrôler'},{id:2,Code:'A_CORRIGER',Libelle:'À corriger'}],EtapesWorkflow:[{id:1,Code:'CONTROLE_CONFORMITE',Libelle:'Contrôle de conformité'}],Personnel:[{id:1,NomComplet:'Camille Martin',Actif:true}],ContexteUtilisateur:[{id:1,Personnel:1}],Pays:[{id:1,NomPays:'Albanie',Actif:true}],Roles:[],Entites:[],Unites:[],CategoriesPays:[],Demandes:[{id:1,Reference:'DPE-DEMO-0001',CreeePar:1,Demandeur:1,PersonnelConcerne:1,PaysDestination:1,Statut:1,EtapeActuelle:1,Urgente:true,DateLimiteTraitement:Date.now()/1000-86400,MotifDeplacement:'Démonstration'}],Actions:[{id:1,Demande:1,Etape:1,AssigneeA:1,StatutAction:'A_FAIRE',DateTransmission:Date.now()/1000}]};
-    ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays'].forEach(t=>makeIndex(t,t==='Roles'?'CodeRole':t==='Statuts'||t==='EtapesWorkflow'?'Code':null));resolveCurrentUser();
+    state.data={Statuts:[{id:1,Code:'A_CONTROLER',Libelle:'À contrôler'},{id:2,Code:'A_CORRIGER',Libelle:'À corriger'}],EtapesWorkflow:[{id:1,Code:'CONTROLE_CONFORMITE',Libelle:'Contrôle de conformité'}],Personnel:[{id:1,NomComplet:'Camille Martin',Nom:'Martin',Prenom:'Camille',Actif:true}],ContexteUtilisateur:[{id:1,Personnel:1}],DemandeInscription:[],DemandeDroits:[],Pays:[{id:1,NomPays:'Albanie',Actif:true}],Roles:[],Entites:[],Unites:[],CategoriesPays:[],Demandes:[{id:1,Reference:'DPE-DEMO-0001',CreeePar:1,Demandeur:1,PersonnelConcerne:1,PaysDestination:1,Statut:1,EtapeActuelle:1,Urgente:true,DateLimiteTraitement:Date.now()/1000-86400,MotifDeplacement:'Démonstration'}],Actions:[{id:1,Demande:1,Etape:1,AssigneeA:1,StatutAction:'A_FAIRE',DateTransmission:Date.now()/1000}]};
+    ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','DemandeInscription','DemandeDroits'].forEach(t=>makeIndex(t,t==='Roles'?'CodeRole':t==='Statuts'||t==='EtapesWorkflow'?'Code':null));resolveCurrentUser();
     $('#mode').textContent='Mode démonstration — aucune écriture réelle';render();
   }
   async function init(){
@@ -178,6 +223,8 @@
   $('#decisionForm [name=Decision]').onchange=e=>{$('#returnReason').hidden=e.target.value!=='RETOURNER';$('#decisionForm [name=MotifRetour]').required=e.target.value==='RETOURNER';};
   $('#decisionForm').onsubmit=e=>{e.preventDefault();decide(e.target);};
   $('#requestForm').onsubmit=e=>{e.preventDefault();createDraft(e.target,e.submitter);};
+  $('#profileForm').onsubmit=e=>{e.preventDefault();submitProfile(e.target,e.submitter);};
+  $('#rightsForm').onsubmit=e=>{e.preventDefault();submitRights(e.target,e.submitter);};
   $('#submitRequest').onclick=submitCurrentRequest;
   init();
 })();
