@@ -19,7 +19,7 @@
     <nav aria-label="Navigation principale">
       <div class="nav-group"><span class="nav-label">Dossiers</span><div class="nav-buttons">
         <button data-view="dashboard" aria-current="page" title="Consulter les demandes visibles dans votre périmètre">Tableau de bord</button>
-        <button data-view="tasks" title="Prendre en charge les actions qui vous sont assignées">Mes actions <span id="taskBadge" class="badge">0</span></button>
+        <button data-view="tasks" title="Prendre en charge les étapes du workflow qui vous sont assignées">Actions workflow <span id="taskBadge" class="badge">0</span></button>
         <button data-view="form" title="Créer une nouvelle demande de permission à l’étranger">Nouvelle demande</button>
       </div></div>
       <div class="nav-group"><span class="nav-label">Mon compte</span><div class="nav-buttons">
@@ -27,8 +27,7 @@
         <button data-view="rights" title="Demander un rôle ou des droits supplémentaires">Demander des droits</button>
       </div></div>
       <div class="nav-group" id="managementNavGroup" hidden><span class="nav-label">Gestion</span><div class="nav-buttons">
-        <button id="enrollmentNav" data-view="enrollments" hidden title="Vérifier les demandes d’inscription de votre unité">Inscriptions</button>
-        <button id="rightsAdminNav" data-view="rightsAdmin" hidden title="Approuver et appliquer les demandes de droits">Droits</button>
+        <button id="managementTasksNav" data-view="managementTasks" hidden title="Traiter les demandes de profil et de droits">Mes actions <span id="managementTaskBadge" class="badge">0</span></button>
         <button id="personnelNav" data-view="personnelAdmin" hidden title="Ajouter une personne ou importer un fichier CSV">Personnel</button>
       </div></div>
     </nav>
@@ -49,7 +48,7 @@
 
     <section id="tasks" hidden>
       <div class="section-title"><div><h1>Mes actions</h1><p>Actions à traiter selon votre périmètre Grist.</p></div><button id="refreshTasks">Actualiser</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Demande</th><th>Étape</th><th>Personnel</th><th>Transmission</th><th>Priorité</th><th></th></tr></thead><tbody id="taskRows"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Demande</th><th>Étape</th><th>Personnel</th><th>Assignée à</th><th>Transmission</th><th>Priorité</th><th></th></tr></thead><tbody id="taskRows"></tbody></table></div>
     </section>
 
     <section id="form" hidden>
@@ -81,7 +80,8 @@
         <h2>Traiter l’action</h2>
         <label>Décision* <select name="Decision" required></select></label>
         <label id="returnReason" hidden>Motif du retour* <textarea name="MotifRetour"></textarea></label>
-        <label>Commentaire <textarea name="Commentaire"></textarea></label>
+        <p id="adminOverrideNotice" class="status-panel" hidden>Intervention administrateur : vous agissez à la place de la personne assignée. Une justification est obligatoire et sera enregistrée dans l’historique.</p>
+        <label>Commentaire / justification <textarea name="Commentaire"></textarea></label>
         <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Confirmer la décision</button></div>
       </form>
     </section>
@@ -109,6 +109,12 @@
         <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Envoyer la demande</button></div>
       </form>
       <div id="rightsStatus" class="status-panel"></div>
+    </section>
+
+    <section id="managementTasks" hidden>
+      <div class="section-title"><div><h1>Mes actions de gestion</h1><p>Demandes concernant le personnel de votre unité et, pour les administrateurs, demandes de droits.</p></div><button id="refreshManagementTasks">Actualiser</button></div>
+      <div class="actions"><button type="button" data-view="personnelAdmin">Ajouter du personnel</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Type</th><th>Personnel</th><th>Unité</th><th>Demande</th><th>Statut</th><th></th></tr></thead><tbody id="managementTaskRows"></tbody></table></div>
     </section>
 
     <section id="enrollments" hidden>

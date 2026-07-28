@@ -2,7 +2,7 @@
   'use strict';
   const W = window.WorkflowCore;
   const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','ContexteUtilisateur','DemandeInscription','DemandeDroits'];
-  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null, personnelImport:[]};
+  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null, adminOverride:false, personnelImport:[]};
   const $ = (s) => document.querySelector(s);
   const nowSeconds = () => Date.now() / 1000;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -44,7 +44,8 @@
     if(personnel.Actif===false)throw Error('La fiche Personnel de l\'utilisateur est inactive.');
     state.currentUser=personnel;
   }
-  function pendingActions(){const user=state.currentUser;return (state.data.Actions||[]).filter(a=>user&&Number(a.AssigneeA)===Number(user.id)&&['A_FAIRE','EN_COURS'].includes(a.StatutAction)).map(actionView).filter(a=>a.demande);}
+  function isWorkflowAdmin(user=state.currentUser){return Boolean(user&&(user.Administrateur===true||code('Roles',user.Role,'CodeRole')==='ADMIN'));}
+  function pendingActions(){const user=state.currentUser,admin=isWorkflowAdmin(user);return (state.data.Actions||[]).filter(a=>user&&(admin||Number(a.AssigneeA)===Number(user.id))&&['A_FAIRE','EN_COURS'].includes(a.StatutAction)).map(actionView).filter(a=>a.demande);}
 
   function render(){
     const demandes=(state.data.Demandes||[]).map(demandeView), tasks=pendingActions(), today=new Date();today.setHours(0,0,0,0);
@@ -64,7 +65,8 @@
   }
   function renderTasks(){
     const tasks=pendingActions();
-    $('#taskRows').innerHTML=tasks.map(a=>`<tr><td>${esc(a.demandeView.Reference)}</td><td>${esc(a.EtapeLibelle)}</td><td>${esc(a.demandeView.PersonnelNom)}</td><td>${dateText(a.DateTransmission,true)}</td><td>${a.demande.Urgente?'⚑ Urgente':'Normale'}</td><td><button class="primary" data-action-id="${a.id}" data-action-status="${a.StatutAction}">${a.StatutAction==='A_FAIRE'?'Prendre en charge':'Traiter'}</button></td></tr>`).join('')||'<tr><td colspan="6">Aucune action en attente dans votre périmètre.</td></tr>';
+    $('#tasks h1').textContent=isWorkflowAdmin()?'Supervision des actions':'Mes actions';
+    $('#taskRows').innerHTML=tasks.map(a=>`<tr><td>${esc(a.demandeView.Reference)}</td><td>${esc(a.EtapeLibelle)}</td><td>${esc(a.demandeView.PersonnelNom)}</td><td>${esc(label('Personnel',a.AssigneeA,'NomComplet')||'—')}</td><td>${dateText(a.DateTransmission,true)}</td><td>${a.demande.Urgente?'⚑ Urgente':'Normale'}</td><td><button class="primary" data-action-id="${a.id}" data-action-status="${a.StatutAction}">${a.StatutAction==='A_FAIRE'?(isWorkflowAdmin()&&Number(a.AssigneeA)!==Number(state.currentUser?.id)?'Superviser':'Prendre en charge'):'Traiter'}</button></td></tr>`).join('')||'<tr><td colspan="7">Aucune action en attente dans votre périmètre.</td></tr>';
     document.querySelectorAll('[data-action-id]').forEach(b=>b.onclick=()=>b.dataset.actionStatus==='A_FAIRE'?takeAction(Number(b.dataset.actionId)):openAction(Number(b.dataset.actionId)));
   }
   function renderFormOptions(){
@@ -94,16 +96,27 @@
     const rf=$('#rightsForm');rf.elements.RoleDemande.innerHTML='<option value="">Aucun changement de rôle</option>'+roles.map(r=>`<option value="${r.id}">${esc(r.Libelle||r.CodeRole)}</option>`).join('');
     rf.elements.RoleDemande.value=String(rights?.RoleDemande||'');rf.elements.GestionnaireUniteDemande.checked=rights?.GestionnaireUniteDemande===true;rf.elements.AdministrateurDemande.checked=rights?.AdministrateurDemande===true;rf.elements.Motif.value=rights?.Motif||'';
     $('#rightsStatus').textContent=rights?`Dernière demande : ${rights.Statut}${rights.CommentaireAdministrateur?'\nCommentaire : '+rights.CommentaireAdministrateur:''}`:'Aucune demande de droits en cours.';
-    const enrollmentTasks=(state.data.DemandeInscription||[]).filter(r=>Number(r.Personnel)!==Number(user.id)&&r.Statut==='EN_ATTENTE');
-    $('#enrollmentNav').hidden=!(isManager||isAdmin||enrollmentTasks.length);
-    $('#enrollmentRows').innerHTML=enrollmentTasks.map(r=>`<tr><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(`${r.Prenom||''} ${r.Nom||''}`.trim())}</td><td>${esc(label('Unites',r.UniteDemandee,'LibelleUnite'))}</td><td>${esc(r.Statut)}</td><td>${esc(r.CommentaireDemandeur||'')}</td><td class="row-actions"><button data-enrollment-id="${r.id}" data-enrollment-status="VERIFIEE" class="primary">Vérifier</button><button data-enrollment-id="${r.id}" data-enrollment-status="A_COMPLETER">Complément</button><button data-enrollment-id="${r.id}" data-enrollment-status="REFUSEE">Refuser</button></td></tr>`).join('')||'<tr><td colspan="6">Aucune inscription en attente.</td></tr>';
+    const enrollmentTasks=(state.data.DemandeInscription||[]).filter(r=>{
+      if(Number(r.Personnel)===Number(user.id)||r.Statut!=='EN_ATTENTE')return false;
+      const person=ref('Personnel',r.Personnel);
+      return isAdmin||(isManager&&person&&Number(person.Unite)===Number(user.Unite)&&Number(r.UniteDemandee)===Number(user.Unite));
+    });
+    const enrollmentMarkup=enrollmentTasks.map(r=>`<tr><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(`${r.Prenom||''} ${r.Nom||''}`.trim())}</td><td>${esc(label('Unites',r.UniteDemandee,'LibelleUnite'))}</td><td>${esc(r.Statut)}</td><td>${esc(r.CommentaireDemandeur||'')}</td><td class="row-actions"><button data-enrollment-id="${r.id}" data-enrollment-status="VERIFIEE" class="primary">Appliquer</button><button data-enrollment-id="${r.id}" data-enrollment-status="A_COMPLETER">Complément</button><button data-enrollment-id="${r.id}" data-enrollment-status="REFUSEE">Refuser</button></td></tr>`).join('');
+    $('#enrollmentRows').innerHTML=enrollmentMarkup||'<tr><td colspan="6">Aucune modification de profil en attente.</td></tr>';
+    const rightTasks=isAdmin?(state.data.DemandeDroits||[]).filter(r=>Number(r.Personnel)!==Number(user.id)&&['EN_ATTENTE','APPROUVEE'].includes(r.Statut)):[];
+    const rightsMarkup=rightTasks.map(r=>{const options=[r.GestionnaireUniteDemande?'Gestionnaire':'',r.AdministrateurDemande?'Administrateur':''].filter(Boolean).join(', ')||'—';const buttons=r.Statut==='APPROUVEE'?`<button class="primary" data-right-id="${r.id}" data-right-action="APPLIQUER">Appliquer</button>`:`<button class="primary" data-right-id="${r.id}" data-right-action="APPROUVEE">Approuver</button><button data-right-id="${r.id}" data-right-action="A_COMPLETER">Complément</button><button data-right-id="${r.id}" data-right-action="REFUSEE">Refuser</button>`;return `<tr><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(label('Roles',r.RoleDemande,'Libelle')||'—')}</td><td>${esc(options)}</td><td>${esc(r.Motif||'')}</td><td>${esc(r.Statut)}</td><td class="row-actions">${buttons}</td></tr>`}).join('');
+    $('#rightsAdminRows').innerHTML=rightsMarkup||'<tr><td colspan="6">Aucune demande de droits en attente.</td></tr>';
+    const managementRows=[
+      ...enrollmentTasks.map(r=>{const p=ref('Personnel',r.Personnel),changes=[p&&String(p.Nom||'')!==String(r.Nom||'')?`Nom : ${p.Nom||'—'} → ${r.Nom||'—'}`:'',p&&String(p.Prenom||'')!==String(r.Prenom||'')?`Prénom : ${p.Prenom||'—'} → ${r.Prenom||'—'}`:'',p&&String(p.Matricule||'')!==String(r.Matricule||'')?`Matricule modifié`:'',p&&Number(p.Unite)!==Number(r.UniteDemandee)?`Unité : ${label('Unites',p.Unite,'LibelleUnite')||'—'} → ${label('Unites',r.UniteDemandee,'LibelleUnite')||'—'}`:''].filter(Boolean).join(' ; ')||'Confirmation des informations';return `<tr><td>Modification du personnel</td><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(label('Unites',r.UniteDemandee,'LibelleUnite'))}</td><td>${esc(changes)}${r.CommentaireDemandeur?` — ${esc(r.CommentaireDemandeur)}`:''}</td><td>${esc(r.Statut)}</td><td class="row-actions"><button data-enrollment-id="${r.id}" data-enrollment-status="VERIFIEE" class="primary">Appliquer</button><button data-enrollment-id="${r.id}" data-enrollment-status="A_COMPLETER">Complément</button><button data-enrollment-id="${r.id}" data-enrollment-status="REFUSEE">Refuser</button></td></tr>`}),
+      ...rightTasks.map(r=>{const request=[label('Roles',r.RoleDemande,'Libelle'),r.GestionnaireUniteDemande?'Gestionnaire d’unité':'',r.AdministrateurDemande?'Administrateur':''].filter(Boolean).join(', ');const buttons=r.Statut==='APPROUVEE'?`<button class="primary" data-right-id="${r.id}" data-right-action="APPLIQUER">Appliquer</button>`:`<button class="primary" data-right-id="${r.id}" data-right-action="APPROUVEE">Approuver</button><button data-right-id="${r.id}" data-right-action="A_COMPLETER">Complément</button><button data-right-id="${r.id}" data-right-action="REFUSEE">Refuser</button>`;return `<tr><td>Modification des droits</td><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(label('Unites',ref('Personnel',r.Personnel)?.Unite,'LibelleUnite'))}</td><td>${esc(request||'Droits demandés')} — ${esc(r.Motif||'')}</td><td>${esc(r.Statut)}</td><td class="row-actions">${buttons}</td></tr>`})
+    ];
+    $('#managementTaskRows').innerHTML=managementRows.join('')||'<tr><td colspan="6">Aucune action de gestion en attente.</td></tr>';
     document.querySelectorAll('[data-enrollment-id]').forEach(b=>b.onclick=()=>reviewEnrollment(Number(b.dataset.enrollmentId),b.dataset.enrollmentStatus));
-    const rightTasks=(state.data.DemandeDroits||[]).filter(r=>Number(r.Personnel)!==Number(user.id)&&['EN_ATTENTE','APPROUVEE'].includes(r.Statut));
-    $('#rightsAdminNav').hidden=!(isAdmin||rightTasks.length);
-    $('#rightsAdminRows').innerHTML=rightTasks.map(r=>{const options=[r.GestionnaireUniteDemande?'Gestionnaire':'',r.AdministrateurDemande?'Administrateur':''].filter(Boolean).join(', ')||'—';const buttons=r.Statut==='APPROUVEE'?`<button class="primary" data-right-id="${r.id}" data-right-action="APPLIQUER">Appliquer</button>`:`<button class="primary" data-right-id="${r.id}" data-right-action="APPROUVEE">Approuver</button><button data-right-id="${r.id}" data-right-action="A_COMPLETER">Complément</button><button data-right-id="${r.id}" data-right-action="REFUSEE">Refuser</button>`;return `<tr><td>${esc(label('Personnel',r.Personnel,'NomComplet'))}</td><td>${esc(label('Roles',r.RoleDemande,'Libelle')||'—')}</td><td>${esc(options)}</td><td>${esc(r.Motif||'')}</td><td>${esc(r.Statut)}</td><td class="row-actions">${buttons}</td></tr>`}).join('')||'<tr><td colspan="6">Aucune demande de droits en attente.</td></tr>';
     document.querySelectorAll('[data-right-id]').forEach(b=>b.onclick=()=>reviewRights(Number(b.dataset.rightId),b.dataset.rightAction));
     const canAddPersonnel=isAdmin||isManager;
-    $('#managementNavGroup').hidden=!canAddPersonnel&&!enrollmentTasks.length&&!rightTasks.length;
+    $('#managementTaskBadge').textContent=String(enrollmentTasks.length+rightTasks.length);
+    $('#managementTasksNav').hidden=!(isManager||isAdmin);
+    $('#managementNavGroup').hidden=!(isManager||isAdmin);
     $('#personnelNav').hidden=!canAddPersonnel;
     const personnelUnit=$('#personnelForm').elements.Unite;
     personnelUnit.innerHTML='<option value="">Choisir</option>'+allowedPersonnelUnits().map(u=>`<option value="${u.id}">${esc(u.LibelleUnite||u.CodeUnite)}</option>`).join('');
@@ -169,11 +182,26 @@
     return [['Personnel',d.PersonnelNom],['Unité',unit?.LibelleUnite],['Entité',entity?.LibelleEntite],['Pays',d.PaysNom],['Catégorie',category?.Libelle],['Séjour',dateText(d.DateDebutSejour)+' → '+dateText(d.DateFinSejour)],['Statut',d.StatutLibelle],['Étape',d.EtapeLibelle],['Urgence',d.Urgente?'Oui — '+(d.JustificationUrgence||'justification absente'):'Non'],['Motif',d.MotifDeplacement],['Date limite',dateText(d.DateLimiteTraitement)]].map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v||'—')}</dd></div>`).join('');
   }
   function openRequest(id){const d=demandeView(ref('Demandes',id));if(!d)return;const user=requireCurrentUser();state.currentAction=null;state.currentRequest=d;$('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);$('#decisionForm').hidden=true;const isAuthor=[d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id));const canSubmit=isAuthor&&['BROUILLON','A_CORRIGER'].includes(d.StatutCode);$('#requestWorkflowActions').hidden=!canSubmit;if(canSubmit){$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Le PDF SOFIA doit être présent dans la colonne Pièces jointes Grist.';}show('detail');}
-  function openAction(id){const user=requireCurrentUser(),raw=ref('Actions',id),a=raw&&actionView(raw);if(!a||Number(a.AssigneeA)!==Number(user.id)){notice('Cette action ne vous est pas assignée.','error');return;}state.currentAction=a;state.currentRequest=a.demandeView;$('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);const decisions=W.decisionsPour(a.EtapeCode),labels={VALIDER:a.EtapeCode==='VALIDATION_CHEF_CORPS'?'Avis favorable':'Valider',RETOURNER:'Retourner pour correction',REFUSER:'Refuser définitivement',TRANSMETTRE:'Transmettre à la BSPS'};const select=$('#decisionForm [name=Decision]');select.innerHTML='<option value="">Choisir</option>'+decisions.map(x=>`<option value="${x}">${esc(labels[x])}</option>`).join('');$('#decisionForm').hidden=false;show('detail');}
+  function openAction(id){
+    const user=requireCurrentUser(),raw=ref('Actions',id),a=raw&&actionView(raw),override=Boolean(a&&isWorkflowAdmin(user)&&Number(a.AssigneeA)!==Number(user.id));
+    if(!a||(!override&&Number(a.AssigneeA)!==Number(user.id))){notice('Cette action ne vous est pas assignée.','error');return;}
+    state.currentAction=a;state.currentRequest=a.demandeView;state.adminOverride=override;
+    $('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);
+    const decisions=W.decisionsPour(a.EtapeCode),labels={VALIDER:a.EtapeCode==='VALIDATION_CHEF_CORPS'?'Avis favorable':'Valider',RETOURNER:'Retourner pour correction',REFUSER:'Refuser définitivement',TRANSMETTRE:'Transmettre à la BSPS'};
+    const select=$('#decisionForm [name=Decision]'),comment=$('#decisionForm [name=Commentaire]');select.innerHTML='<option value="">Choisir</option>'+decisions.map(x=>`<option value="${x}">${esc(labels[x])}</option>`).join('');
+    $('#adminOverrideNotice').hidden=!override;comment.required=override;$('#decisionForm').hidden=false;show('detail');
+    if(override)notice(`Mode supervision : action initialement assignée à ${label('Personnel',a.AssigneeA,'NomComplet')||'un autre personnel'}. La justification sera tracée.`,'info');
+  }
 
   function rowByCode(table,codeValue){const r=state.index[table+'ByCode']?.get(codeValue);if(!r)throw Error(`${table} : code ${codeValue} introuvable.`);return r;}
+  function firstReference(value){
+    const values=Array.isArray(value)?value:[value];
+    const id=values.map(Number).find(Number.isFinite);
+    return id||null;
+  }
   function effectiveResponsible(d,stepCode){
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite);
+    if(stepCode==='VALIDATION_GESTIONNAIRE') return firstReference(unit?.GestionnairesAdministratifs)||(state.data.Personnel||[]).find(p=>p.Actif!==false&&p.GestionnaireUnite===true&&Number(p.Unite)===Number(d.Unite))?.id||null;
     if(stepCode==='CONTROLE_CONFORMITE') return unit?.ResponsableConformite||entity?.ResponsableConformite||null;
     if(stepCode==='VALIDATION_CHEF_CORPS') return unit?.ChefDeCorps||entity?.ChefDeCorps||null;
     if(stepCode==='TRANSMISSION_BSPS') return entity?.ResponsableBSPS||null;
@@ -182,7 +210,7 @@
   async function takeAction(id){
     if(state.busy)return;if(!state.grist){openAction(id);notice('Prise en charge simulée : aucune écriture réelle.');return;}state.busy=true;
     try{
-      const user=requireCurrentUser(),action=ref('Actions',id);if(!action||Number(action.AssigneeA)!==Number(user.id)||action.StatutAction!=='A_FAIRE')throw Error('Cette action ne vous est pas assignée ou n’est plus disponible.');
+      const user=requireCurrentUser(),action=ref('Actions',id),allowed=action&&(Number(action.AssigneeA)===Number(user.id)||isWorkflowAdmin(user));if(!allowed||action.StatutAction!=='A_FAIRE')throw Error('Cette action ne vous est pas assignée, vous n’êtes pas administrateur ou elle n’est plus disponible.');
       await grist.docApi.applyUserActions([['UpdateRecord','Actions',id,{StatutAction:'EN_COURS',DateAccuseReception:action.DateAccuseReception||nowSeconds(),DatePriseEnCharge:nowSeconds()}]]);
       await refresh();openAction(id);notice('Action prise en charge. Vous pouvez maintenant enregistrer votre décision.','success');
     }catch(e){notice('Prise en charge impossible : '+e.message,'error');}
@@ -204,19 +232,20 @@
     if(!confirm('Confirmer cette décision ? Elle sera inscrite dans l’historique.'))return;
     state.busy=true;const submit=form.querySelector('[type=submit]');submit.disabled=true;
     try{
-      const user=requireCurrentUser(),fresh=rows(await grist.docApi.fetchTable('Actions')).find(x=>Number(x.id)===Number(action.id));
-      if(!fresh||Number(fresh.AssigneeA)!==Number(user.id)||fresh.StatutAction!=='EN_COURS')throw Error('Cette action ne vous est pas assignée, n’a pas été prise en charge ou a déjà été traitée.');
+      const user=requireCurrentUser(),fresh=rows(await grist.docApi.fetchTable('Actions')).find(x=>Number(x.id)===Number(action.id)),override=Boolean(fresh&&isWorkflowAdmin(user)&&Number(fresh.AssigneeA)!==Number(user.id));
+      if(!fresh||(!override&&Number(fresh.AssigneeA)!==Number(user.id))||fresh.StatutAction!=='EN_COURS')throw Error('Cette action ne vous est pas assignée, vous n’êtes pas administrateur, elle n’a pas été prise en charge ou a déjà été traitée.');
+      if(override&&!comment)throw Error('La justification de l’intervention administrateur est obligatoire.');
       const nextStatus=rowByCode('Statuts',next.statut), nextStep=rowByCode('EtapesWorkflow',next.etape), isReturn=decision==='RETOURNER', isTerminal=W.TERMINAUX.has(next.statut), actor=user.id, nextResponsible=isReturn?(d.Demandeur||d.CreeePar||null):effectiveResponsible(d,next.etape);
       if(!isReturn&&!isTerminal&&!nextResponsible)throw Error('Aucun responsable actif n’est configuré pour l’étape suivante.');
       const actionStatus=isReturn?'RETOURNEE':'TRAITEE', normalized={VALIDER:'VALIDEE',RETOURNER:'RETOUR_CORRECTION',REFUSER:'REFUSEE',TRANSMETTRE:'TRANSMISE_BSPS'}[decision];
       const actions=[
         ['UpdateRecord','Actions',action.id,{StatutAction:actionStatus,Decision:normalized,MotifRetour:motif,Commentaire:comment,DateTraitement:nowSeconds(),TraiteePar:actor}],
         ['UpdateRecord','Demandes',d.id,{Statut:nextStatus.id,EtapeActuelle:nextStep.id,ResponsableActuel:nextResponsible,DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1,...(isTerminal?{DateCloture:nowSeconds()}:{})}],
-        ['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:next.event,AncienStatut:d.Statut,NouveauStatut:nextStatus.id,AncienneEtape:action.Etape,NouvelleEtape:nextStep.id,Commentaire:motif||comment,ResumeModification:`Décision ${normalized} sur l’action ${action.id}`}]
+        ['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:next.event,AncienStatut:d.Statut,NouveauStatut:nextStatus.id,AncienneEtape:action.Etape,NouvelleEtape:nextStep.id,Commentaire:motif||comment,ResumeModification:`${override?'Intervention administrateur — ':''}Décision ${normalized} sur l’action ${action.id}`}]
       ];
       if(!isReturn&&!isTerminal){const role=ref('Roles',nextStep.RoleResponsable);if(!role)throw Error('Le rôle responsable de l’étape suivante n’est pas configuré.');actions.push(['AddRecord','Actions',null,{Demande:d.id,Etape:nextStep.id,VersionDemande:Number(d.Version||1),AssigneeA:nextResponsible,RoleAssigne:role.id,StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}]);}
       await grist.docApi.applyUserActions(actions);
-      form.reset();state.currentAction=null;await refresh();show('tasks');notice('Décision enregistrée et workflow mis à jour.','success');
+      form.reset();state.currentAction=null;state.adminOverride=false;await refresh();show('tasks');notice(override?'Intervention administrateur enregistrée et tracée.':'Décision enregistrée et workflow mis à jour.','success');
     }catch(e){notice('Décision non enregistrée : '+e.message,'error');}
     finally{state.busy=false;submit.disabled=false;}
   }
@@ -243,14 +272,14 @@
         ['AddRecord','Actions',null,{Demande:d.id,Etape:step.id,VersionDemande:version,AssigneeA:responsible,RoleAssigne:role.id,StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}],
         ['AddRecord','Historique',null,{Demande:d.id,Version:version,DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:target.event,AncienStatut:d.Statut,NouveauStatut:status.id,AncienneEtape:d.EtapeActuelle,NouvelleEtape:step.id,Commentaire:target.incrementVersion?'Demande corrigée et soumise à nouveau.':'Première soumission.',ResumeModification:`Création d’une action ${target.etape}`}]
       ]);
-      await refresh();show('dashboard');notice(target.incrementVersion?'Demande soumise à nouveau.':'Demande soumise au contrôle de conformité.','success');
+      await refresh();show('dashboard');notice(target.incrementVersion?'Demande soumise à nouveau.':'Demande soumise au gestionnaire d’unité.','success');
     }catch(e){notice('Soumission impossible : '+e.message,'error');}
     finally{state.busy=false;$('#submitRequest').disabled=false;}
   }
   async function createDraft(form,submit){
     if(state.busy)return;const fd=new FormData(form),d=Object.fromEntries(fd);d.Urgente=fd.has('Urgente');const errors=W.valide(d),file=fd.get('Pdf');if(file&&file.size&&(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf')))errors.push('Seuls les fichiers PDF sont autorisés.');if(errors.length){notice(errors.join(' '),'error');return;}if(!confirm('Enregistrer ce brouillon ?'))return;
     state.busy=true;submit.disabled=true;
-    try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,Unite:user.Unite,Entite:user.Entite,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé. Ajoutez le PDF dans Grist avant soumission.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
+    try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,Unite:user.Unite,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé. Ajoutez le PDF dans Grist avant soumission.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
   }
   async function submitProfile(form,submit){
     if(state.busy)return;const user=requireCurrentUser(),fd=new FormData(form),existing=openOwn('DemandeInscription');
@@ -265,14 +294,24 @@
     state.busy=true;submit.disabled=true;try{const action=existing?['UpdateRecord','DemandeDroits',existing.id,{...fields,...(existing.Statut==='A_COMPLETER'?{Statut:'EN_ATTENTE'}:{})}]:['AddRecord','DemandeDroits',null,{Personnel:user.id,...fields}];await grist.docApi.applyUserActions([action]);await refresh();notice('Demande de droits enregistrée.','success');}catch(e){notice('Demande de droits refusée : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
   }
   async function reviewEnrollment(id,status){
-    if(state.busy)return;const row=ref('DemandeInscription',id);if(!row||row.Statut!=='EN_ATTENTE')return;const comment=status==='VERIFIEE'?'':String(prompt(status==='A_COMPLETER'?'Précisez les informations manquantes :':'Précisez le motif du refus :')||'').trim();if(status!=='VERIFIEE'&&!comment)return;
-    state.busy=true;try{await grist.docApi.applyUserActions([['UpdateRecord','DemandeInscription',id,{Statut:status,CommentaireGestionnaire:comment}]]);await refresh();notice('Décision d\'inscription enregistrée.','success');}catch(e){notice('Décision refusée : '+e.message,'error');}finally{state.busy=false;}
+    if(state.busy)return;const row=ref('DemandeInscription',id),target=row&&ref('Personnel',row.Personnel),{user,isAdmin,isManager}=personnelAccess();if(!row||!target||row.Statut!=='EN_ATTENTE')return;
+    const sameUnit=Number(target.Unite)===Number(user.Unite)&&Number(row.UniteDemandee)===Number(user.Unite);if(!isAdmin&&!(isManager&&sameUnit)){notice('Vous ne pouvez modifier que le personnel de votre unité.','error');return;}
+    const comment=status==='VERIFIEE'?'':String(prompt(status==='A_COMPLETER'?'Précisez les informations manquantes :':'Précisez le motif du refus :')||'').trim();if(status!=='VERIFIEE'&&!comment)return;
+    if(status==='VERIFIEE'&&!confirm(`Appliquer les modifications à la fiche de ${target.NomComplet||target.Prenom+' '+target.Nom} ?`))return;
+    const requestUpdate={Statut:status,CommentaireGestionnaire:comment,TraitePar:user.id,DateTraitement:nowSeconds()},actions=[];
+    if(status==='VERIFIEE'){
+      const changes={Nom:String(row.Nom||target.Nom||'').trim(),Prenom:String(row.Prenom||target.Prenom||'').trim(),Matricule:String(row.Matricule||'').trim()};
+      if(isAdmin&&row.UniteDemandee&&Number(row.UniteDemandee)!==Number(target.Unite)){const unit=ref('Unites',row.UniteDemandee);changes.Unite=row.UniteDemandee;if(unit?.Entite)changes.Entite=unit.Entite;}
+      actions.push(['UpdateRecord','Personnel',target.id,changes]);
+    }
+    actions.push(['UpdateRecord','DemandeInscription',id,requestUpdate]);
+    state.busy=true;try{await grist.docApi.applyUserActions(actions);await refresh();show('managementTasks');notice(status==='VERIFIEE'?'Modifications appliquées à la fiche Personnel.':'Décision de gestion enregistrée.','success');}catch(e){notice('Décision refusée : '+e.message,'error');}finally{state.busy=false;}
   }
   async function reviewRights(id,action){
-    if(state.busy)return;const row=ref('DemandeDroits',id);if(!row)return;let actions=[];
-    if(action==='APPLIQUER'){if(row.Statut!=='APPROUVEE')return;const changes={};if(row.RoleDemande)changes.Role=row.RoleDemande;if(row.GestionnaireUniteDemande)changes.GestionnaireUnite=true;if(row.AdministrateurDemande)changes.Administrateur=true;actions=[['UpdateRecord','Personnel',row.Personnel,changes],['UpdateRecord','DemandeDroits',id,{Statut:'TRAITEE'}]];}
-    else{if(row.Statut!=='EN_ATTENTE')return;const comment=action==='APPROUVEE'?'':String(prompt(action==='A_COMPLETER'?'Précisez les informations manquantes :':'Précisez le motif du refus :')||'').trim();if(action!=='APPROUVEE'&&!comment)return;actions=[['UpdateRecord','DemandeDroits',id,{Statut:action,CommentaireAdministrateur:comment}]];}
-    state.busy=true;try{await grist.docApi.applyUserActions(actions);await refresh();notice(action==='APPLIQUER'?'Droits appliqués au personnel.':'Décision administrative enregistrée.','success');}catch(e){notice('Traitement refusé : '+e.message,'error');}finally{state.busy=false;}
+    if(state.busy)return;const row=ref('DemandeDroits',id),{user,isAdmin}=personnelAccess();if(!row)return;if(!isAdmin){notice('Seul un administrateur peut traiter les demandes de droits.','error');return;}if(Number(row.Personnel)===Number(user.id)){notice('Un administrateur ne peut pas approuver sa propre demande de droits.','error');return;}let actions=[];
+    if(action==='APPLIQUER'){if(row.Statut!=='APPROUVEE')return;const changes={};if(row.RoleDemande)changes.Role=row.RoleDemande;if(row.GestionnaireUniteDemande)changes.GestionnaireUnite=true;if(row.AdministrateurDemande)changes.Administrateur=true;actions=[['UpdateRecord','Personnel',row.Personnel,changes],['UpdateRecord','DemandeDroits',id,{Statut:'TRAITEE',TraitePar:user.id,DateTraitement:nowSeconds()}]];}
+    else{if(row.Statut!=='EN_ATTENTE')return;const comment=action==='APPROUVEE'?'':String(prompt(action==='A_COMPLETER'?'Précisez les informations manquantes :':'Précisez le motif du refus :')||'').trim();if(action!=='APPROUVEE'&&!comment)return;actions=[['UpdateRecord','DemandeDroits',id,{Statut:action,CommentaireAdministrateur:comment,TraitePar:user.id,DateTraitement:nowSeconds()}]];}
+    state.busy=true;try{await grist.docApi.applyUserActions(actions);await refresh();show('managementTasks');notice(action==='APPLIQUER'?'Droits appliqués au personnel.':'Décision administrative enregistrée.','success');}catch(e){notice('Traitement refusé : '+e.message,'error');}finally{state.busy=false;}
   }
   function demo(){
     state.data={Statuts:[{id:1,Code:'A_CONTROLER',Libelle:'À contrôler'},{id:2,Code:'A_CORRIGER',Libelle:'À corriger'}],EtapesWorkflow:[{id:1,Code:'CONTROLE_CONFORMITE',Libelle:'Contrôle de conformité'}],Personnel:[{id:1,NomComplet:'Camille Martin',Nom:'Martin',Prenom:'Camille',Actif:true}],ContexteUtilisateur:[{id:1,Personnel:1}],DemandeInscription:[],DemandeDroits:[],Pays:[{id:1,NomPays:'Albanie',Actif:true}],Roles:[],Entites:[],Unites:[],CategoriesPays:[],Demandes:[{id:1,Reference:'DPE-DEMO-0001',CreeePar:1,Demandeur:1,PersonnelConcerne:1,PaysDestination:1,Statut:1,EtapeActuelle:1,Urgente:true,DateLimiteTraitement:Date.now()/1000-86400,MotifDeplacement:'Démonstration'}],Actions:[{id:1,Demande:1,Etape:1,AssigneeA:1,StatutAction:'A_FAIRE',DateTransmission:Date.now()/1000}]};
@@ -287,7 +326,7 @@
 
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>show(b.dataset.view));
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>show('dashboard'));
-  $('#search').oninput=renderRequests;$('#filter').onchange=renderRequests;$('#refreshTasks').onclick=()=>refresh().catch(e=>notice(e.message,'error'));
+  $('#search').oninput=renderRequests;$('#filter').onchange=renderRequests;$('#refreshTasks').onclick=()=>refresh().catch(e=>notice(e.message,'error'));$('#refreshManagementTasks').onclick=()=>refresh().catch(e=>notice(e.message,'error'));
   $('[name=PersonnelConcerne]').onchange=e=>{const p=ref('Personnel',e.target.value),u=p&&ref('Unites',p.Unite);$('[name=Unite]').value=u?.LibelleUnite||'';};
   $('#decisionForm [name=Decision]').onchange=e=>{$('#returnReason').hidden=e.target.value!=='RETOURNER';$('#decisionForm [name=MotifRetour]').required=e.target.value==='RETOURNER';};
   $('#decisionForm').onsubmit=e=>{e.preventDefault();decide(e.target);};
