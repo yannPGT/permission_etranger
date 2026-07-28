@@ -52,7 +52,7 @@ test('le PDF SOFIA utilise la fiche native Grist et reste obligatoire avant soum
   assert.match(app,/grist\.setCursorPos\(\{rowId:Number\(requestId\)\}\)/);
   assert.match(app,/grist\.commandApi\.run\('viewAsCard'\)/);
   assert.match(app,/fetchTable\('Demandes'\)/);
-  assert.match(app,/if\(!hasAttachment\(d\.PiecesJointes\)\)throw Error/);
+  assert.match(app,/if\(!hasRequestPdf\(d\)\)throw Error/);
   assert.doesNotMatch(app,/getAccessToken|\/attachments\?auth=|fetch\s*\(/);
 });
 
@@ -63,6 +63,7 @@ test('les versions PDF sont reliées aux demandes et aux actions de validation',
   assert.match(html,/value="NOUVELLE_VERSION"/);
   assert.match(app,/AddRecord','VersionsPDF'/);
   assert.match(app,/fetchTable\('VersionsPDF'\)/);
+  assert.match(app,/latestAttachmentId\(d\.PiecesJointes\)\|\|latestAttachmentId\(activePdfVersion\(d\)\?\.Fichier\)/);
   assert.match(app,/VersionPrecedente/);
   assert.match(app,/VersionPDFActive:versionId/);
   assert.match(app,/VersionPDFEntree:pdfVersionId/);
@@ -97,6 +98,9 @@ test('les actions de gestion appliquent les modifications dans le perimetre auto
   assert.match(app,/Seul un administrateur peut traiter les demandes de droits/);
   assert.match(app,/VerifiePar:user\.id,DateVerification:nowSeconds\(\)/);
   assert.match(app,/TraitePar:user\.id,DateTraitement:nowSeconds\(\)/);
+  assert.match(app,/data-enrollment-status="VERIFIEE"/);
+  assert.match(app,/Statut:'EN_ATTENTE'/);
+  assert.match(app,/saved\.Statut!==status/);
 });
 
 test('un administrateur voit et trace l auto validation de ses demandes',()=>{

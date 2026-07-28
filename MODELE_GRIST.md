@@ -25,7 +25,7 @@ Convention : noms techniques ASCII stables. `Ref:X` = référence vers X, `RefLi
 | Roles | CodeRole, Libelle et dix booléens de capacité fournis dans `imports/Roles.csv` |
 | Parametres | Cle Text unique ; Valeur Text ; TypeValeur Choice ; Description Text ; ModifieLe DateTime ; ModifiePar Ref:Personnel |
 | HistoriqueParametres | Parametre Ref:Parametres ; AncienneValeur/NouvelleValeur Text ; DateHeure DateTime ; Administrateur Ref:Personnel. Ajout seul. |
-| DemandeInscription | Personnel Ref:Personnel ; EmailConnexion Text auteur ; Nom/Prenom/Matricule ; UniteDemandee Ref:Unites ; DateDemande DateTime ; Statut Choice ; commentaires ; VerifiePar Ref:Personnel ; DateVerification DateTime. |
+| DemandeInscription | Personnel Ref:Personnel ; EmailConnexion Text auteur ; Nom/Prenom/Matricule ; UniteDemandee Ref:Unites ; DateDemande DateTime ; Statut Choice normale, sans formule, valeurs `EN_ATTENTE`/`A_COMPLETER`/`VERIFIEE`/`REFUSEE` ; commentaires ; VerifiePar Ref:Personnel ; DateVerification DateTime. |
 | DemandeDroits | Personnel Ref:Personnel ; EmailConnexion Text auteur ; RoleActuel formule ; RoleDemande Ref:Roles ; GestionnaireUniteDemande/AdministrateurDemande Bool ; Motif ; DateDemande DateTime ; Statut Choice ; CommentaireAdministrateur ; TraitePar Ref:Personnel ; DateTraitement DateTime. |
 | Statuts | Code Text unique ; Libelle Text ; Terminal Bool |
 
