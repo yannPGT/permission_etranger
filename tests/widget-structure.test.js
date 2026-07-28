@@ -52,6 +52,7 @@ test('le PDF SOFIA utilise la fiche native Grist et reste obligatoire avant soum
   assert.match(app,/grist\.setCursorPos\(\{rowId:Number\(requestId\)\}\)/);
   assert.match(app,/grist\.commandApi\.run\('viewAsCard'\)/);
   assert.match(app,/fetchTable\('Demandes'\)/);
+  assert.match(app,/Promise\.all\(\[grist\.docApi\.fetchTable\('Demandes'\),grist\.docApi\.fetchTable\('VersionsPDF'\)\]\)/);
   assert.match(app,/if\(!hasRequestPdf\(d\)\)throw Error/);
   assert.doesNotMatch(app,/getAccessToken|\/attachments\?auth=|fetch\s*\(/);
 });
