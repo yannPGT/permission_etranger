@@ -63,8 +63,7 @@
         <label>Motif* <textarea name="MotifDeplacement" required></textarea></label>
         <label class="inline"><input type="checkbox" name="Urgente"> Demande urgente</label>
         <label>Justification de l’urgence <textarea name="JustificationUrgence"></textarea></label>
-        <label>PDF SOFIA* <input type="file" accept="application/pdf,.pdf" name="Pdf" required><small>Document obligatoire, enregistré directement dans Grist.</small></label>
-        <p class="hint">Ajoutez le PDF dans la colonne native Grist après création du brouillon.</p>
+        <p class="status-panel">Le PDF SOFIA est obligatoire avant soumission. Après l’enregistrement du brouillon, Grist ouvrira sa fiche native pour vous permettre de l’ajouter dans <strong>PiecesJointes</strong>.</p>
         <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Enregistrer le brouillon</button></div>
       </form>
     </section>
@@ -73,12 +72,19 @@
       <div class="section-title"><h1>Dossier <span id="detailRef"></span></h1><button type="button" data-close>Fermer</button></div>
       <div id="detailBody" class="detail-grid"></div>
       <div id="requestWorkflowActions" class="workflow-actions" hidden>
+        <button type="button" id="managePdf">Ajouter ou remplacer le PDF SOFIA</button>
         <button type="button" id="submitRequest" class="primary">Soumettre la demande</button>
         <p id="submitRequestHint" class="hint"></p>
       </div>
       <form id="decisionForm" hidden>
         <h2>Traiter l’action</h2>
         <label>Décision* <select name="Decision" required></select></label>
+        <div id="pdfDecisionFields" class="status-panel" hidden>
+          <strong>Traitement du PDF SOFIA</strong>
+          <label>Suivi du PDF <select name="TraitementPDF"><option value="">Choisir</option><option value="SANS_MODIFICATION">Valider le PDF sans modification</option><option value="NOUVELLE_VERSION">Déposer une nouvelle version</option></select></label>
+          <button type="button" id="editActionPdf">Ouvrir la fiche Grist pour ajouter la nouvelle version</button>
+          <p id="pdfDecisionHint" class="hint">Pour une nouvelle version, ajoutez le PDF modifié à la suite des pièces jointes existantes, sans supprimer les précédentes.</p>
+        </div>
         <label id="returnReason" hidden>Motif du retour* <textarea name="MotifRetour"></textarea></label>
         <p id="adminOverrideNotice" class="status-panel" hidden>Intervention administrateur : vous agissez à la place de la personne assignée. Une justification est obligatoire et sera enregistrée dans l’historique.</p>
         <label>Commentaire / justification <textarea name="Commentaire"></textarea></label>

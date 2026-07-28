@@ -1,38 +1,14 @@
 (() => {
   'use strict';
   const W = window.WorkflowCore;
-  const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','ContexteUtilisateur','DemandeInscription','DemandeDroits'];
+  const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','VersionsPDF','ContexteUtilisateur','DemandeInscription','DemandeDroits'];
+  const PDF_DECISION_STEPS = new Set(['CONTROLE_CONFORMITE','VALIDATION_CHEF_CORPS']);
   const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null, adminOverride:false, personnelImport:[]};
   const $ = (s) => document.querySelector(s);
   const nowSeconds = () => Date.now() / 1000;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-  function gristAttachmentEndpoint(access){
-    const direct=new URL(access.baseUrl),ancestorOrigin=window.location.ancestorOrigins?.[0];
-    let gristOrigin=ancestorOrigin||direct.origin;
-    if(!ancestorOrigin&&document.referrer){try{gristOrigin=new URL(document.referrer).origin;}catch{/* conserver l’URL fournie par Grist */}}
-    const endpoint=new URL(`${direct.pathname.replace(/\/$/,'')}/attachments`,gristOrigin);
-    endpoint.searchParams.set('auth',access.token);
-    return endpoint;
-  }
-
-  async function uploadSofiaPdf(file){
-    if(!file||!file.size)throw Error('Le PDF SOFIA est obligatoire.');
-    if(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf'))throw Error('Seuls les fichiers PDF sont autorisés.');
-    const signature=String.fromCharCode(...new Uint8Array(await file.slice(0,5).arrayBuffer()));
-    if(signature!=='%PDF-')throw Error('Le fichier sélectionné ne contient pas un PDF valide.');
-    const access=await grist.getAccessToken();
-    if(!access?.token||!access?.baseUrl)throw Error('Grist n’a pas délivré le jeton temporaire nécessaire au dépôt du PDF.');
-    const body=new FormData();body.append('upload',file,file.name);
-    const endpoint=gristAttachmentEndpoint(access);
-    let response;
-    try{response=await fetch(endpoint,{method:'POST',body,credentials:'omit',referrerPolicy:'no-referrer'});}
-    catch{throw Error('Le navigateur ne peut pas joindre le service de pièces jointes de Grist. Vérifiez les règles CORS/CSP de l’instance.');}
-    if(!response.ok)throw Error(`Le dépôt du PDF dans Grist a échoué (HTTP ${response.status}).`);
-    const attachmentIds=await response.json();
-    if(!Array.isArray(attachmentIds)||attachmentIds.length!==1||!Number(attachmentIds[0]))throw Error('Grist n’a pas retourné un identifiant de pièce jointe valide.');
-    return Number(attachmentIds[0]);
-  }
+  const attachmentIds = (value) => Array.isArray(value)?value.filter(x=>x!=='L').map(Number).filter(Number.isFinite):[];
+  const latestAttachmentId = (value) => attachmentIds(value).at(-1)||null;
 
   function notice(message, kind='info') {
     const box=$('#alert'); box.textContent=message||''; box.dataset.kind=kind;
@@ -212,9 +188,9 @@
   }
   function detailMarkup(d){
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite), category=ref('CategoriesPays',d.CategoriePays);
-    return [['Personnel',d.PersonnelNom],['Unité',unit?.LibelleUnite],['Entité',entity?.LibelleEntite],['Pays',d.PaysNom],['Catégorie',category?.Libelle],['Séjour',dateText(d.DateDebutSejour)+' → '+dateText(d.DateFinSejour)],['Statut',d.StatutLibelle],['Étape',d.EtapeLibelle],['Urgence',d.Urgente?'Oui — '+(d.JustificationUrgence||'justification absente'):'Non'],['Motif',d.MotifDeplacement],['Date limite',dateText(d.DateLimiteTraitement)]].map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v||'—')}</dd></div>`).join('');
+    return [['Personnel',d.PersonnelNom],['Unité',unit?.LibelleUnite],['Entité',entity?.LibelleEntite],['Pays',d.PaysNom],['Catégorie',category?.Libelle],['Séjour',dateText(d.DateDebutSejour)+' → '+dateText(d.DateFinSejour)],['Statut',d.StatutLibelle],['Étape',d.EtapeLibelle],['PDF SOFIA',hasAttachment(d.PiecesJointes)?'Présent':'À ajouter avant soumission'],['Urgence',d.Urgente?'Oui — '+(d.JustificationUrgence||'justification absente'):'Non'],['Motif',d.MotifDeplacement],['Date limite',dateText(d.DateLimiteTraitement)]].map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v||'—')}</dd></div>`).join('');
   }
-  function openRequest(id){const d=demandeView(ref('Demandes',id));if(!d)return;const user=requireCurrentUser();state.currentAction=null;state.currentRequest=d;$('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);$('#decisionForm').hidden=true;const isAuthor=[d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id));const canSubmit=isAuthor&&['BROUILLON','A_CORRIGER'].includes(d.StatutCode);$('#requestWorkflowActions').hidden=!canSubmit;if(canSubmit){$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Le PDF SOFIA doit être présent dans la colonne Pièces jointes Grist.';}show('detail');}
+  function openRequest(id){const d=demandeView(ref('Demandes',id));if(!d)return;const user=requireCurrentUser();state.currentAction=null;state.currentRequest=d;$('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);$('#decisionForm').hidden=true;const isAuthor=[d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id));const canSubmit=isAuthor&&['BROUILLON','A_CORRIGER'].includes(d.StatutCode);$('#requestWorkflowActions').hidden=!canSubmit;if(canSubmit){$('#managePdf').textContent=hasAttachment(d.PiecesJointes)?'Ouvrir ou remplacer le PDF SOFIA':'Ajouter le PDF SOFIA dans Grist';$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Le PDF SOFIA doit être présent dans PiecesJointes. Le widget relira automatiquement la fiche avant soumission.';}show('detail');}
   function openAction(id){
     const user=requireCurrentUser(),raw=ref('Actions',id),a=raw&&actionView(raw),override=Boolean(a&&isWorkflowAdmin(user)&&Number(a.AssigneeA)!==Number(user.id));
     if(!a||(!override&&Number(a.AssigneeA)!==Number(user.id))){notice('Cette action ne vous est pas assignée.','error');return;}
@@ -222,6 +198,7 @@
     $('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);
     const decisions=W.decisionsPour(a.EtapeCode),labels={VALIDER:a.EtapeCode==='VALIDATION_CHEF_CORPS'?'Avis favorable':'Valider',RETOURNER:'Retourner pour correction',REFUSER:'Refuser définitivement',TRANSMETTRE:'Transmettre à la BSPS'};
     const select=$('#decisionForm [name=Decision]'),comment=$('#decisionForm [name=Commentaire]');select.innerHTML='<option value="">Choisir</option>'+decisions.map(x=>`<option value="${x}">${esc(labels[x])}</option>`).join('');
+    const pdfRequired=PDF_DECISION_STEPS.has(a.EtapeCode),pdfTreatment=$('#decisionForm [name=TraitementPDF]');$('#pdfDecisionFields').hidden=!pdfRequired;pdfTreatment.value='';$('#editActionPdf').hidden=true;$('#pdfDecisionHint').textContent=`Version active : ${label('VersionsPDF',a.demande.VersionPDFActive,'LibelleVersion')||'à initialiser'}. Pour une nouvelle version, ajoutez le PDF modifié à la suite des pièces jointes existantes.`;
     $('#adminOverrideNotice').hidden=!override;comment.required=override;$('#decisionForm').hidden=false;show('detail');
     if(override)notice(`Mode supervision : action initialement assignée à ${label('Personnel',a.AssigneeA,'NomComplet')||'un autre personnel'}. La justification sera tracée.`,'info');
   }
@@ -244,7 +221,8 @@
     if(state.busy)return;if(!state.grist){openAction(id);notice('Prise en charge simulée : aucune écriture réelle.');return;}state.busy=true;
     try{
       const user=requireCurrentUser(),action=ref('Actions',id),allowed=action&&(Number(action.AssigneeA)===Number(user.id)||isWorkflowAdmin(user));if(!allowed||action.StatutAction!=='A_FAIRE')throw Error('Cette action ne vous est pas assignée, vous n’êtes pas administrateur ou elle n’est plus disponible.');
-      await grist.docApi.applyUserActions([['UpdateRecord','Actions',id,{StatutAction:'EN_COURS',DateAccuseReception:action.DateAccuseReception||nowSeconds(),DatePriseEnCharge:nowSeconds()}]]);
+      const demand=ref('Demandes',action.Demande),fields={StatutAction:'EN_COURS',DateAccuseReception:action.DateAccuseReception||nowSeconds(),DatePriseEnCharge:nowSeconds()};if(!action.VersionPDFEntree&&demand?.VersionPDFActive)fields.VersionPDFEntree=demand.VersionPDFActive;
+      await grist.docApi.applyUserActions([['UpdateRecord','Actions',id,fields]]);
       await refresh();openAction(id);notice('Action prise en charge. Vous pouvez maintenant enregistrer votre décision.','success');
     }catch(e){notice('Prise en charge impossible : '+e.message,'error');}
     finally{state.busy=false;}
@@ -253,13 +231,13 @@
     if(!state.grist){demo();return;}
     const fetched=await Promise.all(TABLES.map(t=>grist.docApi.fetchTable(t)));
     TABLES.forEach((t,i)=>state.data[t]=rows(fetched[i]));
-    makeIndex('Demandes');makeIndex('Pays','CodePays');makeIndex('Actions');makeIndex('Personnel');makeIndex('Roles','CodeRole');makeIndex('Statuts','Code');makeIndex('EtapesWorkflow','Code');makeIndex('Entites','CodeEntite');makeIndex('Unites','CodeUnite');makeIndex('CategoriesPays','CodeCategorie');makeIndex('DemandeInscription');makeIndex('DemandeDroits');
+    makeIndex('Demandes');makeIndex('Pays','CodePays');makeIndex('Actions');makeIndex('Personnel');makeIndex('Roles','CodeRole');makeIndex('Statuts','Code');makeIndex('EtapesWorkflow','Code');makeIndex('Entites','CodeEntite');makeIndex('Unites','CodeUnite');makeIndex('CategoriesPays','CodeCategorie');makeIndex('VersionsPDF');makeIndex('DemandeInscription');makeIndex('DemandeDroits');
     resolveCurrentUser();
     render();
   }
   async function decide(form){
     if(state.busy||!state.currentAction)return;
-    const fd=new FormData(form), decision=fd.get('Decision'), motif=String(fd.get('MotifRetour')||'').trim(), comment=String(fd.get('Commentaire')||'').trim(), action=state.currentAction, d=action.demande, oldStatus=code('Statuts',d.Statut), oldStep=action.EtapeCode;
+    const fd=new FormData(form), decision=fd.get('Decision'), motif=String(fd.get('MotifRetour')||'').trim(), comment=String(fd.get('Commentaire')||'').trim(), requestedPdfTreatment=String(fd.get('TraitementPDF')||''), action=state.currentAction;let d=action.demande;const oldStatus=code('Statuts',d.Statut), oldStep=action.EtapeCode;
     const next=W.verifieDecision(oldStatus,oldStep,decision,motif);
     if(!state.grist){notice('Décision simulée : aucune écriture réelle.');return;}
     if(!confirm('Confirmer cette décision ? Elle sera inscrite dans l’historique.'))return;
@@ -268,24 +246,63 @@
       const user=requireCurrentUser(),fresh=rows(await grist.docApi.fetchTable('Actions')).find(x=>Number(x.id)===Number(action.id)),override=Boolean(fresh&&isWorkflowAdmin(user)&&Number(fresh.AssigneeA)!==Number(user.id));
       if(!fresh||(!override&&Number(fresh.AssigneeA)!==Number(user.id))||fresh.StatutAction!=='EN_COURS')throw Error('Cette action ne vous est pas assignée, vous n’êtes pas administrateur, elle n’a pas été prise en charge ou a déjà été traitée.');
       if(override&&!comment)throw Error('La justification de l’intervention administrateur est obligatoire.');
+      const freshDemand=rows(await grist.docApi.fetchTable('Demandes')).find(x=>Number(x.id)===Number(d.id));if(!freshDemand)throw Error('La demande n’est plus accessible.');d=demandeView(freshDemand);
       const nextStatus=rowByCode('Statuts',next.statut), nextStep=rowByCode('EtapesWorkflow',next.etape), isReturn=decision==='RETOURNER', isTerminal=W.TERMINAUX.has(next.statut), actor=user.id, nextResponsible=isReturn?(d.Demandeur||d.CreeePar||null):effectiveResponsible(d,next.etape);
       if(!isReturn&&!isTerminal&&!nextResponsible)throw Error('Aucun responsable actif n’est configuré pour l’étape suivante.');
       const actionStatus=isReturn?'RETOURNEE':'TRAITEE', normalized={VALIDER:'VALIDEE',RETOURNER:'RETOUR_CORRECTION',REFUSER:'REFUSEE',TRANSMETTRE:'TRANSMISE_BSPS'}[decision];
+      const acceptsPdf=['VALIDER','TRANSMETTRE'].includes(decision),tracksPdfDecision=acceptsPdf&&PDF_DECISION_STEPS.has(oldStep);let pdfTreatment='',pdfInput=fresh.VersionPDFEntree||d.VersionPDFActive||null,pdfOutput=pdfInput,pdfSummary='';
+      if(acceptsPdf){
+        if(!pdfOutput){pdfOutput=await ensurePdfVersion(d,actor,{actionId:action.id,etapeId:action.Etape,commentaire:'Initialisation de la version PDF active'});pdfInput=pdfOutput;}
+        const active=ref('VersionsPDF',d.VersionPDFActive)||ref('VersionsPDF',pdfOutput),currentAttachment=latestAttachmentId(d.PiecesJointes);let activeAttachment=latestAttachmentId(active?.Fichier);if(!activeAttachment&&Number(d.VersionPDFActive)===Number(pdfOutput))activeAttachment=currentAttachment;
+        if(tracksPdfDecision){
+          if(!['SANS_MODIFICATION','NOUVELLE_VERSION'].includes(requestedPdfTreatment))throw Error('Indiquez si le PDF est validé sans modification ou remplacé par une nouvelle version.');
+          pdfTreatment=requestedPdfTreatment;
+          if(pdfTreatment==='SANS_MODIFICATION'&&currentAttachment!==activeAttachment)throw Error('Un nouveau PDF a été détecté. Choisissez « Déposer une nouvelle version ».');
+          if(pdfTreatment==='NOUVELLE_VERSION'){
+            if(!currentAttachment||currentAttachment===activeAttachment)throw Error('Ajoutez le PDF modifié dans la fiche Grist avant de choisir « Déposer une nouvelle version ».');
+            pdfOutput=await ensurePdfVersion(d,actor,{actionId:action.id,etapeId:action.Etape,commentaire:comment||`PDF modifié à l’étape ${oldStep}`});
+          }
+          pdfSummary=pdfTreatment==='NOUVELLE_VERSION'?`Nouvelle version PDF ${pdfOutput}`:`PDF validé sans modification (${pdfOutput})`;
+        }
+      }
+      const pdfActionFields=tracksPdfDecision?{VersionPDFEntree:pdfInput,TraitementPDF:pdfTreatment,VersionPDFSortie:pdfOutput,CommentairePDF:comment,DateValidationPDF:nowSeconds(),ValidationPDFPar:actor}:{};
+      const activePdfVersion=pdfOutput||d.VersionPDFActive||null;
       const actions=[
-        ['UpdateRecord','Actions',action.id,{StatutAction:actionStatus,Decision:normalized,MotifRetour:motif,Commentaire:comment,DateTraitement:nowSeconds(),TraiteePar:actor}],
-        ['UpdateRecord','Demandes',d.id,{Statut:nextStatus.id,EtapeActuelle:nextStep.id,ResponsableActuel:nextResponsible,DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1,...(isTerminal?{DateCloture:nowSeconds()}:{})}],
-        ['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:next.event,AncienStatut:d.Statut,NouveauStatut:nextStatus.id,AncienneEtape:action.Etape,NouvelleEtape:nextStep.id,Commentaire:motif||comment,ResumeModification:`${override?'Intervention administrateur — ':''}Décision ${normalized} sur l’action ${action.id}`}]
+        ['UpdateRecord','Actions',action.id,{StatutAction:actionStatus,Decision:normalized,MotifRetour:motif,Commentaire:comment,DateTraitement:nowSeconds(),TraiteePar:actor,...pdfActionFields}],
+        ['UpdateRecord','Demandes',d.id,{Statut:nextStatus.id,EtapeActuelle:nextStep.id,ResponsableActuel:nextResponsible,...(activePdfVersion?{VersionPDFActive:activePdfVersion}:{}),DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1,...(isTerminal?{DateCloture:nowSeconds()}:{})}],
+        ['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:next.event,AncienStatut:d.Statut,NouveauStatut:nextStatus.id,AncienneEtape:action.Etape,NouvelleEtape:nextStep.id,Commentaire:motif||comment,ResumeModification:`${override?'Intervention administrateur — ':''}Décision ${normalized} sur l’action ${action.id}${pdfSummary?' — '+pdfSummary:''}`}]
       ];
-      if(!isReturn&&!isTerminal){const role=ref('Roles',nextStep.RoleResponsable);if(!role)throw Error('Le rôle responsable de l’étape suivante n’est pas configuré.');actions.push(['AddRecord','Actions',null,{Demande:d.id,Etape:nextStep.id,VersionDemande:Number(d.Version||1),AssigneeA:nextResponsible,RoleAssigne:role.id,StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}]);}
+      if(!isReturn&&!isTerminal){const role=ref('Roles',nextStep.RoleResponsable);if(!role)throw Error('Le rôle responsable de l’étape suivante n’est pas configuré.');actions.push(['AddRecord','Actions',null,{Demande:d.id,Etape:nextStep.id,VersionDemande:Number(d.Version||1),AssigneeA:nextResponsible,RoleAssigne:role.id,...(activePdfVersion?{VersionPDFEntree:activePdfVersion}:{}),StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}]);}
       await grist.docApi.applyUserActions(actions);
       form.reset();state.currentAction=null;state.adminOverride=false;await refresh();show('tasks');notice(override?'Intervention administrateur enregistrée et tracée.':'Décision enregistrée et workflow mis à jour.','success');
     }catch(e){notice('Décision non enregistrée : '+e.message,'error');}
     finally{state.busy=false;submit.disabled=false;}
   }
-  function hasAttachment(value){return Array.isArray(value)?value.filter(x=>x!=='L').length>0:Boolean(value);}
+  function hasAttachment(value){return attachmentIds(value).length>0;}
+  async function ensurePdfVersion(d,actor,{actionId=null,etapeId=null,commentaire=''}={}){
+    const attachmentId=latestAttachmentId(d.PiecesJointes);if(!attachmentId)throw Error('Aucun PDF SOFIA n’est présent dans PiecesJointes.');
+    const current=ref('VersionsPDF',d.VersionPDFActive);
+    if(current&&latestAttachmentId(current.Fichier)===attachmentId)return Number(current.id);
+    const demandeVersions=(state.data.VersionsPDF||[]).filter(v=>Number(v.Demande)===Number(d.id));
+    const numero=Math.max(0,...demandeVersions.map(v=>Number(v.NumeroVersion)||0))+1;
+    const fields={Demande:d.id,Etape:etapeId||d.EtapeActuelle,NumeroVersion:numero,Fichier:['L',attachmentId],AjoutePar:actor,DateAjout:nowSeconds(),Commentaire:commentaire||`Version PDF ${numero}`,VersionActive:true};
+    if(actionId)fields.Action=actionId;if(current)fields.VersionPrecedente=current.id;
+    const result=await grist.docApi.applyUserActions([['AddRecord','VersionsPDF',null,fields]]),rawId=result?.retValues?.[0];let versionId=Number(rawId?.id??rawId);
+    if(!versionId){const created=rows(await grist.docApi.fetchTable('VersionsPDF')).filter(v=>Number(v.Demande)===Number(d.id)&&Number(v.NumeroVersion)===numero&&latestAttachmentId(v.Fichier)===attachmentId).sort((a,b)=>Number(b.id)-Number(a.id))[0];versionId=Number(created?.id);}
+    if(!versionId)throw Error('Grist n’a pas retourné l’identifiant de la nouvelle version PDF.');
+    const updates=[['UpdateRecord','Demandes',d.id,{VersionPDFActive:versionId}]];if(current)updates.unshift(['UpdateRecord','VersionsPDF',current.id,{VersionActive:false}]);
+    await grist.docApi.applyUserActions(updates);d.VersionPDFActive=versionId;
+    return versionId;
+  }
+  async function openNativeAttachmentEditor(requestId){
+    if(!state.grist||!requestId)return;
+    await grist.setCursorPos({rowId:Number(requestId)});
+    await grist.commandApi.run('viewAsCard');
+  }
   async function submitCurrentRequest(){
-    if(state.busy||!state.currentRequest)return;const d=state.currentRequest;
+    if(state.busy||!state.currentRequest)return;let d=state.currentRequest;
     try{
+      if(state.grist){const fresh=rows(await grist.docApi.fetchTable('Demandes')).find(r=>Number(r.id)===Number(d.id));if(!fresh)throw Error('La demande n’est plus accessible.');d=demandeView(fresh);state.currentRequest=d;$('#detailBody').innerHTML=detailMarkup(d);}
       const target=W.cibleSoumission(d.StatutCode,d.EtapeCode),errors=W.valide(d);
       if(errors.length)throw Error(errors.join(' '));
       if(!state.grist){notice(`Soumission simulée vers ${target.etape} : aucune écriture réelle.`);return;}
@@ -299,20 +316,27 @@
       state.busy=true;$('#submitRequest').disabled=true;
       const user=requireCurrentUser();
       if(![d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id)))throw Error('Vous n’êtes pas l\'auteur de cette demande.');
-      const version=Number(d.Version||1)+(target.incrementVersion?1:0),actor=user.id;
+      const version=Number(d.Version||1)+(target.incrementVersion?1:0),actor=user.id,pdfVersionId=await ensurePdfVersion(d,actor,{etapeId:d.EtapeActuelle,commentaire:target.incrementVersion?'PDF de la demande corrigée':'PDF initial SOFIA'});
       await grist.docApi.applyUserActions([
-        ['UpdateRecord','Demandes',d.id,{Version:version,Statut:status.id,EtapeActuelle:step.id,ResponsableActuel:responsible,DateSoumission:nowSeconds(),DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1}],
-        ['AddRecord','Actions',null,{Demande:d.id,Etape:step.id,VersionDemande:version,AssigneeA:responsible,RoleAssigne:role.id,StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}],
-        ['AddRecord','Historique',null,{Demande:d.id,Version:version,DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:target.event,AncienStatut:d.Statut,NouveauStatut:status.id,AncienneEtape:d.EtapeActuelle,NouvelleEtape:step.id,Commentaire:target.incrementVersion?'Demande corrigée et soumise à nouveau.':'Première soumission.',ResumeModification:`Création d’une action ${target.etape}`}]
+        ['UpdateRecord','Demandes',d.id,{Version:version,Statut:status.id,EtapeActuelle:step.id,ResponsableActuel:responsible,VersionPDFActive:pdfVersionId,DateSoumission:nowSeconds(),DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1}],
+        ['AddRecord','Actions',null,{Demande:d.id,Etape:step.id,VersionDemande:version,AssigneeA:responsible,RoleAssigne:role.id,VersionPDFEntree:pdfVersionId,StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}],
+        ['AddRecord','Historique',null,{Demande:d.id,Version:version,DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:target.event,AncienStatut:d.Statut,NouveauStatut:status.id,AncienneEtape:d.EtapeActuelle,NouvelleEtape:step.id,Commentaire:target.incrementVersion?'Demande corrigée et soumise à nouveau.':'Première soumission.',ResumeModification:`Création d’une action ${target.etape} avec version PDF ${pdfVersionId}`}]
       ]);
       await refresh();show('dashboard');notice(target.incrementVersion?'Demande soumise à nouveau.':'Demande soumise au gestionnaire d’unité.','success');
     }catch(e){notice('Soumission impossible : '+e.message,'error');}
     finally{state.busy=false;$('#submitRequest').disabled=false;}
   }
   async function createDraft(form,submit){
-    if(state.busy)return;const fd=new FormData(form),d=Object.fromEntries(fd);d.Urgente=fd.has('Urgente');const errors=W.valide(d),file=fd.get('Pdf');if(!file||!file.size)errors.push('Le PDF SOFIA est obligatoire.');else if(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf'))errors.push('Seuls les fichiers PDF sont autorisés.');if(errors.length){notice(errors.join(' '),'error');return;}if(!confirm('Enregistrer ce brouillon avec le PDF SOFIA ?'))return;
+    if(state.busy)return;const fd=new FormData(form),d=Object.fromEntries(fd);d.Urgente=fd.has('Urgente');const errors=W.valide(d);if(errors.length){notice(errors.join(' '),'error');return;}if(!confirm('Enregistrer ce brouillon puis ouvrir sa fiche Grist pour ajouter le PDF SOFIA ?'))return;
     state.busy=true;submit.disabled=true;
-    try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');const attachmentId=await uploadSofiaPdf(file);await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false,PiecesJointes:['L',attachmentId]}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé avec son PDF SOFIA. Vous pouvez maintenant le soumettre.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
+    try{
+      if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}
+      const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();
+      if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');
+      await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);
+      form.reset();await refresh();const created=(state.data.Demandes||[]).find(r=>r.Reference===reference);if(!created)throw Error('Brouillon créé mais impossible à retrouver.');openRequest(created.id);notice(`Brouillon ${reference} créé. Ajoutez maintenant le PDF SOFIA dans PiecesJointes.`,'success');
+      try{await openNativeAttachmentEditor(created.id);}catch{notice(`Brouillon ${reference} créé. Utilisez le bouton « Ajouter le PDF SOFIA dans Grist » pour ouvrir la fiche native.`,'error');}
+    }catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
   }
   async function submitProfile(form,submit){
     if(state.busy)return;const user=requireCurrentUser(),fd=new FormData(form),existing=openOwn('DemandeInscription');
@@ -348,8 +372,8 @@
     state.busy=true;try{await grist.docApi.applyUserActions(actions);await refresh();show('managementTasks');notice(action==='APPLIQUER'?'Droits appliqués au personnel.':'Décision administrative enregistrée.','success');}catch(e){notice('Traitement refusé : '+e.message,'error');}finally{state.busy=false;}
   }
   function demo(){
-    state.data={Statuts:[{id:1,Code:'A_CONTROLER',Libelle:'À contrôler'},{id:2,Code:'A_CORRIGER',Libelle:'À corriger'}],EtapesWorkflow:[{id:1,Code:'CONTROLE_CONFORMITE',Libelle:'Contrôle de conformité'}],Personnel:[{id:1,NomComplet:'Camille Martin',Nom:'Martin',Prenom:'Camille',Actif:true}],ContexteUtilisateur:[{id:1,Personnel:1}],DemandeInscription:[],DemandeDroits:[],Pays:[{id:1,NomPays:'Albanie',Actif:true}],Roles:[],Entites:[],Unites:[],CategoriesPays:[],Demandes:[{id:1,Reference:'DPE-DEMO-0001',CreeePar:1,Demandeur:1,PersonnelConcerne:1,PaysDestination:1,Statut:1,EtapeActuelle:1,Urgente:true,DateLimiteTraitement:Date.now()/1000-86400,MotifDeplacement:'Démonstration'}],Actions:[{id:1,Demande:1,Etape:1,AssigneeA:1,StatutAction:'A_FAIRE',DateTransmission:Date.now()/1000}]};
-    ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','DemandeInscription','DemandeDroits'].forEach(t=>makeIndex(t,t==='Roles'?'CodeRole':t==='Statuts'||t==='EtapesWorkflow'?'Code':null));resolveCurrentUser();
+    state.data={Statuts:[{id:1,Code:'A_CONTROLER',Libelle:'À contrôler'},{id:2,Code:'A_CORRIGER',Libelle:'À corriger'}],EtapesWorkflow:[{id:1,Code:'CONTROLE_CONFORMITE',Libelle:'Contrôle de conformité'}],Personnel:[{id:1,NomComplet:'Camille Martin',Nom:'Martin',Prenom:'Camille',Actif:true}],ContexteUtilisateur:[{id:1,Personnel:1}],DemandeInscription:[],DemandeDroits:[],VersionsPDF:[],Pays:[{id:1,NomPays:'Albanie',Actif:true}],Roles:[],Entites:[],Unites:[],CategoriesPays:[],Demandes:[{id:1,Reference:'DPE-DEMO-0001',CreeePar:1,Demandeur:1,PersonnelConcerne:1,PaysDestination:1,Statut:1,EtapeActuelle:1,Urgente:true,DateLimiteTraitement:Date.now()/1000-86400,MotifDeplacement:'Démonstration'}],Actions:[{id:1,Demande:1,Etape:1,AssigneeA:1,StatutAction:'A_FAIRE',DateTransmission:Date.now()/1000}]};
+    ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','VersionsPDF','DemandeInscription','DemandeDroits'].forEach(t=>makeIndex(t,t==='Roles'?'CodeRole':t==='Statuts'||t==='EtapesWorkflow'?'Code':null));resolveCurrentUser();
     $('#mode').textContent='Mode démonstration — aucune écriture réelle';render();
   }
   async function init(){
@@ -363,6 +387,7 @@
   $('#search').oninput=renderRequests;$('#filter').onchange=renderRequests;$('#refreshTasks').onclick=()=>refresh().catch(e=>notice(e.message,'error'));$('#refreshManagementTasks').onclick=()=>refresh().catch(e=>notice(e.message,'error'));
   $('[name=PersonnelConcerne]').onchange=e=>{const p=ref('Personnel',e.target.value),u=p&&ref('Unites',p.Unite);$('[name=Unite]').value=u?.LibelleUnite||'';};
   $('#decisionForm [name=Decision]').onchange=e=>{$('#returnReason').hidden=e.target.value!=='RETOURNER';$('#decisionForm [name=MotifRetour]').required=e.target.value==='RETOURNER';};
+  $('#decisionForm [name=TraitementPDF]').onchange=e=>{$('#editActionPdf').hidden=e.target.value!=='NOUVELLE_VERSION';};
   $('#decisionForm').onsubmit=e=>{e.preventDefault();decide(e.target);};
   $('#requestForm').onsubmit=e=>{e.preventDefault();createDraft(e.target,e.submitter);};
   $('#profileForm').onsubmit=e=>{e.preventDefault();submitProfile(e.target,e.submitter);};
@@ -370,6 +395,8 @@
   $('#personnelForm').onsubmit=e=>{e.preventDefault();submitPersonnel(e.target,e.submitter);};
   $('#personnelCsv').onchange=e=>loadPersonnelCsv(e.target.files[0]);
   $('#importPersonnel').onclick=importPersonnel;
+  $('#managePdf').onclick=async()=>{try{if(!state.currentRequest)return;await openNativeAttachmentEditor(state.currentRequest.id);}catch(e){notice('Ouverture de la fiche native impossible : '+e.message,'error');}};
+  $('#editActionPdf').onclick=async()=>{try{if(!state.currentRequest)return;await openNativeAttachmentEditor(state.currentRequest.id);}catch(e){notice('Ouverture de la fiche native impossible : '+e.message,'error');}};
   $('#submitRequest').onclick=submitCurrentRequest;
   init();
 })();

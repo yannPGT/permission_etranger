@@ -47,15 +47,27 @@ test('ajout de personnel sécurisé et import CSV local',()=>{
   assert.doesNotMatch(app,/FileReader|XMLHttpRequest/);
 });
 
-test('le PDF SOFIA est obligatoire et téléversé uniquement vers Grist',()=>{
-  assert.match(html,/name="Pdf" required/);
-  assert.match(app,/grist\.getAccessToken\(\)/);
-  assert.match(app,/window\.location\.ancestorOrigins/);
-  assert.match(app,/document\.referrer/);
-  assert.match(app,/endpoint\.searchParams\.set\('auth',access\.token\)/);
-  assert.match(app,/body\.append\('upload',file,file\.name\)/);
-  assert.match(app,/PiecesJointes:\['L',attachmentId\]/);
-  assert.match(app,/signature!==['"]%PDF-['"]/);
+test('le PDF SOFIA utilise la fiche native Grist et reste obligatoire avant soumission',()=>{
+  for(const id of ['managePdf','pdfDecisionFields','editActionPdf','pdfDecisionHint'])assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(app,/grist\.setCursorPos\(\{rowId:Number\(requestId\)\}\)/);
+  assert.match(app,/grist\.commandApi\.run\('viewAsCard'\)/);
+  assert.match(app,/fetchTable\('Demandes'\)/);
+  assert.match(app,/if\(!hasAttachment\(d\.PiecesJointes\)\)throw Error/);
+  assert.doesNotMatch(app,/getAccessToken|\/attachments\?auth=|fetch\s*\(/);
+});
+
+test('les versions PDF sont reliées aux demandes et aux actions de validation',()=>{
+  assert.match(app,/TABLES = \[[^\]]*'VersionsPDF'/);
+  assert.match(app,/PDF_DECISION_STEPS = new Set\(\['CONTROLE_CONFORMITE','VALIDATION_CHEF_CORPS'\]\)/);
+  assert.match(html,/value="SANS_MODIFICATION"/);
+  assert.match(html,/value="NOUVELLE_VERSION"/);
+  assert.match(app,/AddRecord','VersionsPDF'/);
+  assert.match(app,/fetchTable\('VersionsPDF'\)/);
+  assert.match(app,/VersionPrecedente/);
+  assert.match(app,/VersionPDFActive:versionId/);
+  assert.match(app,/VersionPDFEntree:pdfVersionId/);
+  for(const field of ['TraitementPDF','VersionPDFSortie','CommentairePDF','DateValidationPDF','ValidationPDFPar'])assert.match(app,new RegExp(`${field}:`));
+  assert.match(app,/tracksPdfDecision=acceptsPdf&&PDF_DECISION_STEPS\.has\(oldStep\)/);
 });
 
 test('la creation d une demande ne renseigne pas les colonnes formule Unite et Entite',()=>{
