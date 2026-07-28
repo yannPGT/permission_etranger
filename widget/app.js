@@ -307,7 +307,7 @@
   async function submitCurrentRequest(){
     if(state.busy||!state.currentRequest)return;let d=state.currentRequest;
     try{
-      if(state.grist){const fresh=rows(await grist.docApi.fetchTable('Demandes')).find(r=>Number(r.id)===Number(d.id));if(!fresh)throw Error('La demande n’est plus accessible.');d=demandeView(fresh);state.currentRequest=d;$('#detailBody').innerHTML=detailMarkup(d);}
+      if(state.grist){const [demandTable,versionTable]=await Promise.all([grist.docApi.fetchTable('Demandes'),grist.docApi.fetchTable('VersionsPDF')]);state.data.VersionsPDF=rows(versionTable);makeIndex('VersionsPDF');const fresh=rows(demandTable).find(r=>Number(r.id)===Number(d.id));if(!fresh)throw Error('La demande n’est plus accessible.');d=demandeView(fresh);state.currentRequest=d;$('#detailBody').innerHTML=detailMarkup(d);}
       const target=W.cibleSoumission(d.StatutCode,d.EtapeCode),errors=W.valide(d);
       if(errors.length)throw Error(errors.join(' '));
       if(!state.grist){notice(`Soumission simulée vers ${target.etape} : aucune écriture réelle.`);return;}
