@@ -8,7 +8,7 @@ const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const core=fs.readFileSync(path.join(root,'workflow-core.js'),'utf8');
 
 test('les vues principales existent',()=>{
-  for(const id of ['dashboard','tasks','form','detail','profile','rights','enrollments','rightsAdmin','personnelAdmin'])assert.match(html,new RegExp(`id="${id}"`));
+  for(const id of ['dashboard','tasks','form','detail','profile','rights','managementTasks','enrollments','rightsAdmin','personnelAdmin'])assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/data-view="tasks"/);
 });
 test('tous les identifiants DOM directs utilisés par le script existent',()=>{
@@ -45,4 +45,32 @@ test('ajout de personnel sécurisé et import CSV local',()=>{
   assert.match(app,/Administrateur:false,GestionnaireUnite:false/);
   assert.match(app,/AddRecord','ContexteUtilisateur'/);
   assert.doesNotMatch(app,/FileReader|XMLHttpRequest|fetch\s*\(/);
+});
+
+test('la creation d une demande ne renseigne pas la colonne formule Entite',()=>{
+  assert.doesNotMatch(app,/PersonnelConcerne:user\.id,Unite:user\.Unite,Entite:/);
+  assert.match(app,/PersonnelConcerne:user\.id,Unite:user\.Unite,DateDemande:/);
+});
+
+test('le gestionnaire d unite est affecte avant la conformite',()=>{
+  assert.match(core,/VALIDATION_GESTIONNAIRE/);
+  assert.match(app,/GestionnairesAdministratifs/);
+  assert.match(app,/stepCode==='VALIDATION_GESTIONNAIRE'/);
+});
+
+test('un administrateur peut superviser une action avec justification tracee',()=>{
+  assert.match(html,/id="adminOverrideNotice"/);
+  assert.match(app,/function isWorkflowAdmin/);
+  assert.match(app,/override&&!comment/);
+  assert.match(app,/Intervention administrateur/);
+  assert.match(app,/TraiteePar:actor/);
+});
+
+test('les actions de gestion appliquent les modifications dans le perimetre autorise',()=>{
+  assert.match(html,/id="managementTasksNav"/);
+  assert.match(html,/id="managementTaskRows"/);
+  assert.match(app,/const sameUnit=/);
+  assert.match(app,/UpdateRecord','Personnel',target\.id,changes/);
+  assert.match(app,/Seul un administrateur peut traiter les demandes de droits/);
+  assert.match(app,/TraitePar:user\.id,DateTraitement:nowSeconds\(\)/);
 });

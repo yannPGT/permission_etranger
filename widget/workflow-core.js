@@ -2,7 +2,10 @@
   'use strict';
   const TERMINAUX=new Set(['REFUSEE','TRANSMISE_BSPS','CLOTUREE','ARCHIVEE']);
   const TRANSITIONS={
-    'BROUILLON:SOUMETTRE':{statut:'A_CONTROLER',etape:'CONTROLE_CONFORMITE',event:'SOUMISSION'},
+    'BROUILLON:SOUMETTRE':{statut:'SOUMISE',etape:'VALIDATION_GESTIONNAIRE',event:'SOUMISSION'},
+    'SOUMISE:VALIDER':{statut:'A_CONTROLER',etape:'CONTROLE_CONFORMITE',event:'VALIDATION_GESTIONNAIRE'},
+    'SOUMISE:RETOURNER':{statut:'A_CORRIGER',etape:'VALIDATION_GESTIONNAIRE',event:'RETOUR_CORRECTION'},
+    'SOUMISE:REFUSER':{statut:'REFUSEE',etape:'VALIDATION_GESTIONNAIRE',event:'REFUS'},
     'A_CONTROLER:VALIDER':{statut:'A_VALIDER_CHEF_CORPS',etape:'VALIDATION_CHEF_CORPS',event:'VALIDATION'},
     'A_CONTROLER:RETOURNER':{statut:'A_CORRIGER',etape:'CONTROLE_CONFORMITE',event:'RETOUR_CORRECTION'},
     'A_CONTROLER:REFUSER':{statut:'REFUSEE',etape:'CONTROLE_CONFORMITE',event:'REFUS'},
@@ -12,6 +15,7 @@
     'A_TRANSMETTRE_BSPS:TRANSMETTRE':{statut:'TRANSMISE_BSPS',etape:'TRANSMISSION_BSPS',event:'TRANSMISSION_BSPS'}
   };
   const DECISIONS_PAR_ETAPE={
+    VALIDATION_GESTIONNAIRE:['VALIDER','RETOURNER','REFUSER'],
     CONTROLE_CONFORMITE:['VALIDER','RETOURNER','REFUSER'],
     VALIDATION_CHEF_CORPS:['VALIDER','RETOURNER','REFUSER'],
     TRANSMISSION_BSPS:['TRANSMETTRE']
@@ -22,7 +26,8 @@
   function transition(statut,decision){return TRANSITIONS[statut+':'+decision]||null;}
   function decisionsPour(etape){return DECISIONS_PAR_ETAPE[etape]||[];}
   function cibleSoumission(statut,etape){
-    if(statut==='BROUILLON')return {statut:'A_CONTROLER',etape:'CONTROLE_CONFORMITE',event:'SOUMISSION',incrementVersion:false};
+    if(statut==='BROUILLON')return {statut:'SOUMISE',etape:'VALIDATION_GESTIONNAIRE',event:'SOUMISSION',incrementVersion:false};
+    if(statut==='A_CORRIGER'&&etape==='VALIDATION_GESTIONNAIRE')return {statut:'SOUMISE',etape,event:'RESOUMISSION',incrementVersion:true};
     if(statut==='A_CORRIGER'&&etape==='CONTROLE_CONFORMITE')return {statut:'A_CONTROLER',etape,event:'RESOUMISSION',incrementVersion:true};
     if(statut==='A_CORRIGER'&&etape==='VALIDATION_CHEF_CORPS')return {statut:'A_VALIDER_CHEF_CORPS',etape,event:'RESOUMISSION',incrementVersion:true};
     throw Error('Cette demande ne peut pas être soumise dans son état actuel.');

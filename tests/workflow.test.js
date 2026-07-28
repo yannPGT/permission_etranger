@@ -11,3 +11,7 @@ test('validation conformité crée étape chef de corps',()=>assert.deepEqual(W.
 test('décisions limitées par étape',()=>assert.deepEqual(W.decisionsPour('TRANSMISSION_BSPS'),['TRANSMETTRE']));
 test('refuse une décision hors étape',()=>assert.throws(()=>W.verifieDecision('A_CONTROLER','CONTROLE_CONFORMITE','TRANSMETTRE','')));
 test('resoumet vers le chef après retour du chef',()=>assert.deepEqual(W.cibleSoumission('A_CORRIGER','VALIDATION_CHEF_CORPS'),{statut:'A_VALIDER_CHEF_CORPS',etape:'VALIDATION_CHEF_CORPS',event:'RESOUMISSION',incrementVersion:true}));
+test('premiere soumission cree une validation gestionnaire',()=>assert.deepEqual(W.cibleSoumission('BROUILLON','DEMANDE_INITIALE'),{statut:'SOUMISE',etape:'VALIDATION_GESTIONNAIRE',event:'SOUMISSION',incrementVersion:false}));
+test('validation gestionnaire transmet a la conformite',()=>assert.deepEqual(W.transition('SOUMISE','VALIDER'),{statut:'A_CONTROLER',etape:'CONTROLE_CONFORMITE',event:'VALIDATION_GESTIONNAIRE'}));
+test('retour gestionnaire resoumet au gestionnaire',()=>assert.deepEqual(W.cibleSoumission('A_CORRIGER','VALIDATION_GESTIONNAIRE'),{statut:'SOUMISE',etape:'VALIDATION_GESTIONNAIRE',event:'RESOUMISSION',incrementVersion:true}));
+test('retour gestionnaire exige un motif',()=>assert.throws(()=>W.verifieDecision('SOUMISE','VALIDATION_GESTIONNAIRE','RETOURNER','')));
