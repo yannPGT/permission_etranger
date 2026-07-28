@@ -7,6 +7,15 @@
   const nowSeconds = () => Date.now() / 1000;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+  function gristAttachmentEndpoint(access){
+    const direct=new URL(access.baseUrl),ancestorOrigin=window.location.ancestorOrigins?.[0];
+    let gristOrigin=ancestorOrigin||direct.origin;
+    if(!ancestorOrigin&&document.referrer){try{gristOrigin=new URL(document.referrer).origin;}catch{/* conserver l’URL fournie par Grist */}}
+    const endpoint=new URL(`${direct.pathname.replace(/\/$/,'')}/attachments`,gristOrigin);
+    endpoint.searchParams.set('auth',access.token);
+    return endpoint;
+  }
+
   async function uploadSofiaPdf(file){
     if(!file||!file.size)throw Error('Le PDF SOFIA est obligatoire.');
     if(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf'))throw Error('Seuls les fichiers PDF sont autorisés.');
@@ -15,8 +24,10 @@
     const access=await grist.getAccessToken();
     if(!access?.token||!access?.baseUrl)throw Error('Grist n’a pas délivré le jeton temporaire nécessaire au dépôt du PDF.');
     const body=new FormData();body.append('upload',file,file.name);
-    const endpoint=`${String(access.baseUrl).replace(/\/$/,'')}/attachments?auth=${encodeURIComponent(access.token)}`;
-    const response=await fetch(endpoint,{method:'POST',body,credentials:'omit',referrerPolicy:'no-referrer'});
+    const endpoint=gristAttachmentEndpoint(access);
+    let response;
+    try{response=await fetch(endpoint,{method:'POST',body,credentials:'omit',referrerPolicy:'no-referrer'});}
+    catch{throw Error('Le navigateur ne peut pas joindre le service de pièces jointes de Grist. Vérifiez les règles CORS/CSP de l’instance.');}
     if(!response.ok)throw Error(`Le dépôt du PDF dans Grist a échoué (HTTP ${response.status}).`);
     const attachmentIds=await response.json();
     if(!Array.isArray(attachmentIds)||attachmentIds.length!==1||!Number(attachmentIds[0]))throw Error('Grist n’a pas retourné un identifiant de pièce jointe valide.');

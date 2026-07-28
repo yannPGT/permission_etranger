@@ -50,7 +50,9 @@ test('ajout de personnel sécurisé et import CSV local',()=>{
 test('le PDF SOFIA est obligatoire et téléversé uniquement vers Grist',()=>{
   assert.match(html,/name="Pdf" required/);
   assert.match(app,/grist\.getAccessToken\(\)/);
-  assert.match(app,/\/attachments\?auth=/);
+  assert.match(app,/window\.location\.ancestorOrigins/);
+  assert.match(app,/document\.referrer/);
+  assert.match(app,/endpoint\.searchParams\.set\('auth',access\.token\)/);
   assert.match(app,/body\.append\('upload',file,file\.name\)/);
   assert.match(app,/PiecesJointes:\['L',attachmentId\]/);
   assert.match(app,/signature!==['"]%PDF-['"]/);
