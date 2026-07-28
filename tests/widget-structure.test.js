@@ -47,9 +47,9 @@ test('ajout de personnel sécurisé et import CSV local',()=>{
   assert.doesNotMatch(app,/FileReader|XMLHttpRequest|fetch\s*\(/);
 });
 
-test('la creation d une demande ne renseigne pas la colonne formule Entite',()=>{
-  assert.doesNotMatch(app,/PersonnelConcerne:user\.id,Unite:user\.Unite,Entite:/);
-  assert.match(app,/PersonnelConcerne:user\.id,Unite:user\.Unite,DateDemande:/);
+test('la creation d une demande ne renseigne pas les colonnes formule Unite et Entite',()=>{
+  assert.doesNotMatch(app,/PersonnelConcerne:user\.id,[^}]*\b(?:Unite|Entite):/);
+  assert.match(app,/PersonnelConcerne:user\.id,DateDemande:/);
 });
 
 test('le gestionnaire d unite est affecte avant la conformite',()=>{
@@ -73,4 +73,11 @@ test('les actions de gestion appliquent les modifications dans le perimetre auto
   assert.match(app,/UpdateRecord','Personnel',target\.id,changes/);
   assert.match(app,/Seul un administrateur peut traiter les demandes de droits/);
   assert.match(app,/TraitePar:user\.id,DateTraitement:nowSeconds\(\)/);
+});
+
+test('un administrateur voit et trace l auto validation de ses demandes',()=>{
+  assert.match(app,/if\(isAdmin\)return true;/);
+  assert.match(app,/Auto-validation administrateur/);
+  assert.match(app,/CommentaireGestionnaire:\[comment,selfAudit\]/);
+  assert.match(app,/CommentaireAdministrateur:\[comment,selfAudit\]/);
 });
