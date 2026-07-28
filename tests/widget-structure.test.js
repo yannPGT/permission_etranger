@@ -44,7 +44,16 @@ test('ajout de personnel sécurisé et import CSV local',()=>{
   assert.match(app,/toUpperCase\(\)==='UTILISATEUR'/);
   assert.match(app,/Administrateur:false,GestionnaireUnite:false/);
   assert.match(app,/AddRecord','ContexteUtilisateur'/);
-  assert.doesNotMatch(app,/FileReader|XMLHttpRequest|fetch\s*\(/);
+  assert.doesNotMatch(app,/FileReader|XMLHttpRequest/);
+});
+
+test('le PDF SOFIA est obligatoire et téléversé uniquement vers Grist',()=>{
+  assert.match(html,/name="Pdf" required/);
+  assert.match(app,/grist\.getAccessToken\(\)/);
+  assert.match(app,/\/attachments\?auth=/);
+  assert.match(app,/body\.append\('upload',file,file\.name\)/);
+  assert.match(app,/PiecesJointes:\['L',attachmentId\]/);
+  assert.match(app,/signature!==['"]%PDF-['"]/);
 });
 
 test('la creation d une demande ne renseigne pas les colonnes formule Unite et Entite',()=>{
@@ -72,6 +81,7 @@ test('les actions de gestion appliquent les modifications dans le perimetre auto
   assert.match(app,/const sameUnit=/);
   assert.match(app,/UpdateRecord','Personnel',target\.id,changes/);
   assert.match(app,/Seul un administrateur peut traiter les demandes de droits/);
+  assert.match(app,/VerifiePar:user\.id,DateVerification:nowSeconds\(\)/);
   assert.match(app,/TraitePar:user\.id,DateTraitement:nowSeconds\(\)/);
 });
 
