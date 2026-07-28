@@ -7,6 +7,22 @@
   const nowSeconds = () => Date.now() / 1000;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+  async function uploadSofiaPdf(file){
+    if(!file||!file.size)throw Error('Le PDF SOFIA est obligatoire.');
+    if(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf'))throw Error('Seuls les fichiers PDF sont autorisés.');
+    const signature=String.fromCharCode(...new Uint8Array(await file.slice(0,5).arrayBuffer()));
+    if(signature!=='%PDF-')throw Error('Le fichier sélectionné ne contient pas un PDF valide.');
+    const access=await grist.getAccessToken();
+    if(!access?.token||!access?.baseUrl)throw Error('Grist n’a pas délivré le jeton temporaire nécessaire au dépôt du PDF.');
+    const body=new FormData();body.append('upload',file,file.name);
+    const endpoint=`${String(access.baseUrl).replace(/\/$/,'')}/attachments?auth=${encodeURIComponent(access.token)}`;
+    const response=await fetch(endpoint,{method:'POST',body,credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!response.ok)throw Error(`Le dépôt du PDF dans Grist a échoué (HTTP ${response.status}).`);
+    const attachmentIds=await response.json();
+    if(!Array.isArray(attachmentIds)||attachmentIds.length!==1||!Number(attachmentIds[0]))throw Error('Grist n’a pas retourné un identifiant de pièce jointe valide.');
+    return Number(attachmentIds[0]);
+  }
+
   function notice(message, kind='info') {
     const box=$('#alert'); box.textContent=message||''; box.dataset.kind=kind;
     if(message) box.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -283,9 +299,9 @@
     finally{state.busy=false;$('#submitRequest').disabled=false;}
   }
   async function createDraft(form,submit){
-    if(state.busy)return;const fd=new FormData(form),d=Object.fromEntries(fd);d.Urgente=fd.has('Urgente');const errors=W.valide(d),file=fd.get('Pdf');if(file&&file.size&&(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf')))errors.push('Seuls les fichiers PDF sont autorisés.');if(errors.length){notice(errors.join(' '),'error');return;}if(!confirm('Enregistrer ce brouillon ?'))return;
+    if(state.busy)return;const fd=new FormData(form),d=Object.fromEntries(fd);d.Urgente=fd.has('Urgente');const errors=W.valide(d),file=fd.get('Pdf');if(!file||!file.size)errors.push('Le PDF SOFIA est obligatoire.');else if(!file.name.toLowerCase().endsWith('.pdf')||(file.type&&file.type!=='application/pdf'))errors.push('Seuls les fichiers PDF sont autorisés.');if(errors.length){notice(errors.join(' '),'error');return;}if(!confirm('Enregistrer ce brouillon avec le PDF SOFIA ?'))return;
     state.busy=true;submit.disabled=true;
-    try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé. Ajoutez le PDF dans Grist avant soumission.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
+    try{if(!state.grist){notice('Brouillon simulé : aucune écriture effectuée.');return;}const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');const attachmentId=await uploadSofiaPdf(file);await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false,PiecesJointes:['L',attachmentId]}]]);form.reset();await refresh();show('dashboard');notice(`Brouillon ${reference} créé avec son PDF SOFIA. Vous pouvez maintenant le soumettre.`,'success');}catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
   }
   async function submitProfile(form,submit){
     if(state.busy)return;const user=requireCurrentUser(),fd=new FormData(form),existing=openOwn('DemandeInscription');
@@ -305,7 +321,7 @@
     const comment=status==='VERIFIEE'?'':String(prompt(status==='A_COMPLETER'?'Précisez les informations manquantes :':'Précisez le motif du refus :')||'').trim();if(status!=='VERIFIEE'&&!comment)return;
     if(status==='VERIFIEE'&&!confirm(`Appliquer les modifications à la fiche de ${target.NomComplet||target.Prenom+' '+target.Nom} ?`))return;
     const selfAudit=isAdmin&&Number(row.Personnel)===Number(user.id)?'Auto-validation administrateur.':'';
-    const requestUpdate={Statut:status,CommentaireGestionnaire:[comment,selfAudit].filter(Boolean).join(' — '),TraitePar:user.id,DateTraitement:nowSeconds()},actions=[];
+    const requestUpdate={Statut:status,CommentaireGestionnaire:[comment,selfAudit].filter(Boolean).join(' — '),VerifiePar:user.id,DateVerification:nowSeconds()},actions=[];
     if(status==='VERIFIEE'){
       const changes={Nom:String(row.Nom||target.Nom||'').trim(),Prenom:String(row.Prenom||target.Prenom||'').trim(),Matricule:String(row.Matricule||'').trim()};
       if(isAdmin&&row.UniteDemandee&&Number(row.UniteDemandee)!==Number(target.Unite)){const unit=ref('Unites',row.UniteDemandee);changes.Unite=row.UniteDemandee;if(unit?.Entite)changes.Entite=unit.Entite;}
