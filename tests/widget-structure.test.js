@@ -151,5 +151,13 @@ test('le detail affiche l etape et reserve le traitement aux actions workflow',(
 test('le bandeau identifie la version beta',()=>{
   assert.match(html,/class="beta-badge"/);
   assert.match(html,/>Bêta<\/span>/);
-  assert.match(html,/build=20260729-2/);
+  assert.match(html,/build=20260729-3/);
+});
+
+test('un administrateur assure le relais si le responsable suivant manque',()=>{
+  assert.match(app,/function activePersonnelId/);
+  assert.match(app,/if\(!isWorkflowAdmin\(user\)\)throw Error\('Aucun responsable actif/);
+  assert.match(app,/nextResponsible=actor;adminFallback=true/);
+  assert.match(app,/Relais administrateur faute de responsable actif/);
+  assert.match(app,/assignée provisoirement à votre compte administrateur/);
 });
