@@ -237,18 +237,21 @@
   }
 
   function rowByCode(table,codeValue){const r=state.index[table+'ByCode']?.get(codeValue);if(!r)throw Error(`${table} : code ${codeValue} introuvable.`);return r;}
-  function firstReference(value){
+  function activePersonnelId(value){
+    const personnel=ref('Personnel',value);
+    return personnel&&personnel.Actif!==false?personnel.id:null;
+  }
+  function firstActiveReference(value){
     const values=Array.isArray(value)?value:[value];
-    const id=values.map(Number).find(Number.isFinite);
-    return id||null;
+    return values.map(activePersonnelId).find(Boolean)||null;
   }
   function effectiveResponsible(d,stepCode){
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite);
-    if(stepCode==='VALIDATION_GESTIONNAIRE') return firstReference(unit?.GestionnairesAdministratifs)||(state.data.Personnel||[]).find(p=>p.Actif!==false&&p.GestionnaireUnite===true&&Number(p.Unite)===Number(d.Unite))?.id||null;
-    if(stepCode==='CONTROLE_CONFORMITE') return unit?.ResponsableConformite||entity?.ResponsableConformite||null;
-    if(stepCode==='VALIDATION_CHEF_CORPS') return unit?.ChefDeCorps||entity?.ChefDeCorps||null;
-    if(stepCode==='TRANSMISSION_BSPS') return entity?.ResponsableBSPS||null;
-    return d.Demandeur||d.CreeePar||null;
+    if(stepCode==='VALIDATION_GESTIONNAIRE') return firstActiveReference(unit?.GestionnairesAdministratifs)||(state.data.Personnel||[]).find(p=>p.Actif!==false&&p.GestionnaireUnite===true&&Number(p.Unite)===Number(d.Unite))?.id||null;
+    if(stepCode==='CONTROLE_CONFORMITE') return activePersonnelId(unit?.ResponsableConformite)||activePersonnelId(entity?.ResponsableConformite);
+    if(stepCode==='VALIDATION_CHEF_CORPS') return activePersonnelId(unit?.ChefDeCorps)||activePersonnelId(entity?.ChefDeCorps);
+    if(stepCode==='TRANSMISSION_BSPS') return activePersonnelId(entity?.ResponsableBSPS);
+    return activePersonnelId(d.Demandeur)||activePersonnelId(d.CreeePar);
   }
   async function takeAction(id){
     if(state.busy)return;if(!state.grist){openAction(id);notice('Prise en charge simulée : aucune écriture réelle.');return;}state.busy=true;
@@ -280,8 +283,8 @@
       if(!fresh||(!override&&Number(fresh.AssigneeA)!==Number(user.id))||fresh.StatutAction!=='EN_COURS')throw Error('Cette action ne vous est pas assignée, vous n’êtes pas administrateur, elle n’a pas été prise en charge ou a déjà été traitée.');
       if(override&&!comment)throw Error('La justification de l’intervention administrateur est obligatoire.');
       const freshDemand=rows(await grist.docApi.fetchTable('Demandes')).find(x=>Number(x.id)===Number(d.id));if(!freshDemand)throw Error('La demande n’est plus accessible.');d=demandeView(freshDemand);
-      const nextStatus=rowByCode('Statuts',next.statut), nextStep=rowByCode('EtapesWorkflow',next.etape), isReturn=decision==='RETOURNER', isTerminal=W.TERMINAUX.has(next.statut), actor=user.id, nextResponsible=isReturn?(d.Demandeur||d.CreeePar||null):effectiveResponsible(d,next.etape);
-      if(!isReturn&&!isTerminal&&!nextResponsible)throw Error('Aucun responsable actif n’est configuré pour l’étape suivante.');
+      const nextStatus=rowByCode('Statuts',next.statut), nextStep=rowByCode('EtapesWorkflow',next.etape), isReturn=decision==='RETOURNER', isTerminal=W.TERMINAUX.has(next.statut), actor=user.id;let nextResponsible=isReturn?(activePersonnelId(d.Demandeur)||activePersonnelId(d.CreeePar)):effectiveResponsible(d,next.etape),adminFallback=false;
+      if(!isReturn&&!isTerminal&&!nextResponsible){if(!isWorkflowAdmin(user))throw Error('Aucun responsable actif n’est configuré pour l’étape suivante.');nextResponsible=actor;adminFallback=true;}
       const actionStatus=isReturn?'RETOURNEE':'TRAITEE', normalized={VALIDER:'VALIDEE',RETOURNER:'RETOUR_CORRECTION',REFUSER:'REFUSEE',TRANSMETTRE:'TRANSMISE_BSPS'}[decision];
       const acceptsPdf=['VALIDER','TRANSMETTRE'].includes(decision),tracksPdfDecision=acceptsPdf&&PDF_DECISION_STEPS.has(oldStep);let pdfTreatment='',pdfInput=fresh.VersionPDFEntree||d.VersionPDFActive||null,pdfOutput=pdfInput,pdfSummary='';
       if(acceptsPdf){
@@ -303,11 +306,11 @@
       const actions=[
         ['UpdateRecord','Actions',action.id,{StatutAction:actionStatus,Decision:normalized,MotifRetour:motif,Commentaire:comment,DateTraitement:nowSeconds(),TraiteePar:actor,...pdfActionFields}],
         ['UpdateRecord','Demandes',d.id,{Statut:nextStatus.id,EtapeActuelle:nextStep.id,ResponsableActuel:nextResponsible,...(activePdfVersion?{VersionPDFActive:activePdfVersion}:{}),DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1,...(isTerminal?{DateCloture:nowSeconds()}:{})}],
-        ['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:next.event,AncienStatut:d.Statut,NouveauStatut:nextStatus.id,AncienneEtape:action.Etape,NouvelleEtape:nextStep.id,Commentaire:motif||comment,ResumeModification:`${override?'Intervention administrateur — ':''}Décision ${normalized} sur l’action ${action.id}${pdfSummary?' — '+pdfSummary:''}`}]
+        ['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:nowSeconds(),Utilisateur:actor,TypeEvenement:next.event,AncienStatut:d.Statut,NouveauStatut:nextStatus.id,AncienneEtape:action.Etape,NouvelleEtape:nextStep.id,Commentaire:motif||comment,ResumeModification:`${override?'Intervention administrateur — ':''}${adminFallback?'Relais administrateur faute de responsable actif — ':''}Décision ${normalized} sur l’action ${action.id}${pdfSummary?' — '+pdfSummary:''}`}]
       ];
       if(!isReturn&&!isTerminal){const role=ref('Roles',nextStep.RoleResponsable);if(!role)throw Error('Le rôle responsable de l’étape suivante n’est pas configuré.');actions.push(['AddRecord','Actions',null,{Demande:d.id,Etape:nextStep.id,VersionDemande:Number(d.Version||1),AssigneeA:nextResponsible,RoleAssigne:role.id,...(activePdfVersion?{VersionPDFEntree:activePdfVersion}:{}),StatutAction:'A_FAIRE',DateTransmission:nowSeconds()}]);}
       await grist.docApi.applyUserActions(actions);
-      form.reset();state.currentAction=null;state.adminOverride=false;await refresh();show('tasks');notice(override?'Intervention administrateur enregistrée et tracée.':'Décision enregistrée et workflow mis à jour.','success');
+      form.reset();state.currentAction=null;state.adminOverride=false;await refresh();show('tasks');notice(adminFallback?'Décision enregistrée. Aucun responsable actif n’est configuré pour l’étape suivante : l’action a été assignée provisoirement à votre compte administrateur et cette dérogation est tracée.':override?'Intervention administrateur enregistrée et tracée.':'Décision enregistrée et workflow mis à jour.',adminFallback?'info':'success');
     }catch(e){notice('Décision non enregistrée : '+e.message,'error');}
     finally{state.busy=false;submit.disabled=false;}
   }

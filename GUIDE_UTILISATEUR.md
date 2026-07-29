@@ -12,7 +12,7 @@ Le bouton « Annuler la demande » est proposé sur toute demande non terminale 
 
 Aux étapes « Contrôle conformité » et « Validation chef de corps », choisir explicitement « Valider le PDF sans modification » ou « Déposer une nouvelle version ». Dans le second cas, ouvrir la fiche Grist depuis le bouton proposé et ajouter le PDF modifié à la suite des pièces jointes existantes, sans supprimer l’ancienne pièce. Le widget crée alors une ligne `VersionsPDF`, désactive la version précédente, relie les versions d’entrée et de sortie à l’action et trace l’auteur, la date et le commentaire. Une validation sans modification conserve la même version d’entrée et de sortie tout en enregistrant la décision.
 
-Le responsable conformité peut valider, retourner avec motif ou refuser selon son rôle. Le chef de corps fait de même à son étape. La BSPS transmet et termine le workflow. « ⚠ Hors délai » reste traitable.
+Le responsable conformité peut valider, retourner avec motif ou refuser selon son rôle. Le chef de corps fait de même à son étape. La BSPS transmet et termine le workflow. « ⚠ Hors délai » reste traitable. Si aucun responsable actif n’est configuré pour l’étape suivante, un administrateur peut néanmoins valider : l’action suivante lui est alors assignée provisoirement, un avertissement est affiché et la dérogation est inscrite dans l’historique. Un utilisateur non administrateur reste bloqué jusqu’à la correction du référentiel.
 
 L'export s'effectue avec la fonction XLSX native Grist depuis une vue autorisée. Signaler immédiatement toute donnée d'une autre unité visible. Aucun courriel ni notification externe n'est envoyé.
 
