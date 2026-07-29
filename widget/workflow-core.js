@@ -1,6 +1,6 @@
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.WorkflowCore=api;})(this,function(){
   'use strict';
-  const TERMINAUX=new Set(['REFUSEE','TRANSMISE_BSPS','CLOTUREE','ARCHIVEE']);
+  const TERMINAUX=new Set(['REFUSEE','ANNULEE','TRANSMISE_BSPS','CLOTUREE','ARCHIVEE']);
   const TRANSITIONS={
     'BROUILLON:SOUMETTRE':{statut:'SOUMISE',etape:'VALIDATION_GESTIONNAIRE',event:'SOUMISSION'},
     'SOUMISE:VALIDER':{statut:'A_CONTROLER',etape:'CONTROLE_CONFORMITE',event:'VALIDATION_GESTIONNAIRE'},

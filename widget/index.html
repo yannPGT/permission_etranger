@@ -4,13 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Permissions à l’étranger</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?build=20260729">
   <style>
     header{padding:.65rem 1rem}
     .brand{gap:.8rem}
     .brand-copy{display:grid;gap:.08rem}
     .release-strip{max-width:1180px;margin:.35rem auto 0;padding:0 1rem;color:#6b7785;font-size:.68rem;letter-spacing:.03em;text-align:left}
     .logo{width:72px;height:58px}
+    .correction-panel{border-left:5px solid var(--danger);background:#fef3f2}
+    .danger{color:#fff;background:var(--danger);border-color:var(--danger)}
   </style>
 </head>
 <body>
@@ -20,7 +22,7 @@
       <div class="nav-group"><span class="nav-label">Dossiers</span><div class="nav-buttons">
         <button data-view="dashboard" aria-current="page" title="Consulter les demandes visibles dans votre périmètre">Tableau de bord</button>
         <button data-view="tasks" title="Prendre en charge les étapes du workflow qui vous sont assignées">Actions workflow <span id="taskBadge" class="badge">0</span></button>
-        <button data-view="form" title="Créer une nouvelle demande de permission à l’étranger">Nouvelle demande</button>
+        <button id="newRequestNav" data-view="form" title="Créer une nouvelle demande de permission à l’étranger">Nouvelle demande</button>
       </div></div>
       <div class="nav-group"><span class="nav-label">Mon compte</span><div class="nav-buttons">
         <button data-view="profile" title="Compléter ou corriger les informations de votre profil">Compléter mon profil</button>
@@ -52,7 +54,7 @@
     </section>
 
     <section id="form" hidden>
-      <h1>Nouvelle demande</h1>
+      <h1 id="requestFormTitle">Nouvelle demande</h1>
       <form id="requestForm">
         <label>Personnel concerné* <select name="PersonnelConcerne" required></select></label>
         <label>Unité <input name="Unite" readonly aria-describedby="unitHint"><small id="unitHint">Déduite de la fiche Personnel.</small></label>
@@ -64,16 +66,19 @@
         <label class="inline"><input type="checkbox" name="Urgente"> Demande urgente</label>
         <label>Justification de l’urgence <textarea name="JustificationUrgence"></textarea></label>
         <p class="status-panel">Le PDF SOFIA est obligatoire avant soumission. Après l’enregistrement du brouillon, Grist ouvrira sa fiche native pour vous permettre de l’ajouter dans <strong>PiecesJointes</strong>.</p>
-        <div class="actions"><button type="button" data-close>Annuler</button><button type="submit" class="primary">Enregistrer le brouillon</button></div>
+        <div class="actions"><button type="button" data-close>Annuler</button><button id="requestFormSubmit" type="submit" class="primary">Enregistrer le brouillon</button></div>
       </form>
     </section>
 
     <section id="detail" hidden>
       <div class="section-title"><h1>Dossier <span id="detailRef"></span></h1><button type="button" data-close>Fermer</button></div>
       <div id="detailBody" class="detail-grid"></div>
+      <div id="correctionReason" class="status-panel correction-panel" hidden></div>
       <div id="requestWorkflowActions" class="workflow-actions" hidden>
+        <button type="button" id="editRequest">Modifier les informations</button>
         <button type="button" id="managePdf">Ajouter ou remplacer le PDF SOFIA</button>
         <button type="button" id="submitRequest" class="primary">Soumettre la demande</button>
+        <button type="button" id="cancelRequest" class="danger">Annuler la demande</button>
         <p id="submitRequestHint" class="hint"></p>
       </div>
       <form id="decisionForm" hidden>
@@ -151,7 +156,7 @@
     </section>
   </main>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-  <script src="workflow-core.js"></script>
-  <script src="app.js"></script>
+  <script src="workflow-core.js?build=20260729"></script>
+  <script src="app.js?build=20260729"></script>
 </body>
 </html>
