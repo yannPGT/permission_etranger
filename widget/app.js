@@ -193,6 +193,13 @@
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite), category=ref('CategoriesPays',d.CategoriePays);
     return [['Personnel',d.PersonnelNom],['Unité',unit?.LibelleUnite],['Entité',entity?.LibelleEntite],['Pays',d.PaysNom],['Catégorie',category?.Libelle],['Séjour',dateText(d.DateDebutSejour)+' → '+dateText(d.DateFinSejour)],['Statut',d.StatutLibelle],['Étape',d.EtapeLibelle],['PDF SOFIA',hasRequestPdf(d)?'Présent':'À ajouter avant soumission'],['Urgence',d.Urgente?'Oui — '+(d.JustificationUrgence||'justification absente'):'Non'],['Motif',d.MotifDeplacement],['Date limite',dateText(d.DateLimiteTraitement)]].map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v||'—')}</dd></div>`).join('');
   }
+  function requestProgressLabel(d){
+    const terminal={REFUSEE:'Refusée',ANNULEE:'Annulée',TRANSMISE_BSPS:'Transmise à la BSPS',CLOTUREE:'Clôturée',ARCHIVEE:'Archivée'};
+    if(terminal[d.StatutCode])return terminal[d.StatutCode];
+    if(d.StatutCode==='A_CORRIGER')return 'En attente de correction par le demandeur';
+    if(d.StatutCode==='BROUILLON')return 'Brouillon à compléter';
+    return {DEMANDE_INITIALE:'En préparation par le demandeur',VALIDATION_GESTIONNAIRE:'En cours de validation par le gestionnaire d’unité',CONTROLE_CONFORMITE:'En cours de contrôle par le responsable conformité',VALIDATION_CHEF_CORPS:'En cours de validation par le chef de corps',TRANSMISSION_BSPS:'En cours de traitement par la BSPS'}[d.EtapeCode]||d.EtapeLibelle||'Étape non renseignée';
+  }
   function latestReturnAction(demandId){
     return (state.data.Actions||[]).filter(a=>Number(a.Demande)===Number(demandId)&&(a.StatutAction==='RETOURNEE'||a.Decision==='RETOUR_CORRECTION')&&String(a.MotifRetour||'').trim()).sort((a,b)=>Number(b.DateTraitement||0)-Number(a.DateTraitement||0)||Number(b.id)-Number(a.id))[0]||null;
   }
@@ -211,7 +218,7 @@
   }
   function openRequest(id){
     const d=demandeView(ref('Demandes',id));if(!d)return;const user=requireCurrentUser();state.currentAction=null;state.currentRequest=d;
-    $('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);renderCorrectionReason(d);$('#decisionForm').hidden=true;
+    $('#detailRef').textContent=d.Reference||('#'+id);$('#detailStage').textContent=requestProgressLabel(d);$('#detailBody').innerHTML=detailMarkup(d);renderCorrectionReason(d);$('#decisionForm').hidden=true;
     const canEdit=isRequestAuthor(d,user)&&['BROUILLON','A_CORRIGER'].includes(d.StatutCode),canCancel=canCancelRequest(d,user);
     $('#editRequest').hidden=!canEdit;$('#managePdf').hidden=!canEdit;$('#submitRequest').hidden=!canEdit;$('#cancelRequest').hidden=!canCancel;$('#requestWorkflowActions').hidden=!(canEdit||canCancel);
     if(canEdit){$('#managePdf').textContent=hasRequestPdf(d)?'Ouvrir ou remplacer le PDF SOFIA':'Ajouter le PDF SOFIA dans Grist';$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Vous pouvez corriger toutes les informations de la demande sauf le personnel concerné. Le PDF SOFIA doit être présent avant soumission.';}else $('#submitRequestHint').textContent='';
@@ -221,7 +228,7 @@
     const user=requireCurrentUser(),raw=ref('Actions',id),a=raw&&actionView(raw),override=Boolean(a&&isWorkflowAdmin(user)&&Number(a.AssigneeA)!==Number(user.id));
     if(!a||(!override&&Number(a.AssigneeA)!==Number(user.id))){notice('Cette action ne vous est pas assignée.','error');return;}
     state.currentAction=a;state.currentRequest=a.demandeView;state.adminOverride=override;
-    $('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);renderCorrectionReason(a.demandeView);
+    $('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailStage').textContent=requestProgressLabel(a.demandeView);$('#detailBody').innerHTML=detailMarkup(a.demandeView);renderCorrectionReason(a.demandeView);
     const decisions=W.decisionsPour(a.EtapeCode),labels={VALIDER:a.EtapeCode==='VALIDATION_CHEF_CORPS'?'Avis favorable':'Valider',RETOURNER:'Retourner pour correction',REFUSER:'Refuser définitivement',TRANSMETTRE:'Transmettre à la BSPS'};
     const select=$('#decisionForm [name=Decision]'),comment=$('#decisionForm [name=Commentaire]');select.innerHTML='<option value="">Choisir</option>'+decisions.map(x=>`<option value="${x}">${esc(labels[x])}</option>`).join('');
     const pdfRequired=PDF_DECISION_STEPS.has(a.EtapeCode),pdfTreatment=$('#decisionForm [name=TraitementPDF]');$('#pdfDecisionFields').hidden=!pdfRequired;pdfTreatment.value='';$('#editActionPdf').hidden=true;$('#pdfDecisionHint').textContent=`Version active : ${label('VersionsPDF',a.demande.VersionPDFActive,'LibelleVersion')||'à initialiser'}. Pour une nouvelle version, ajoutez le PDF modifié à la suite des pièces jointes existantes.`;

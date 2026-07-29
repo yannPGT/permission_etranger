@@ -137,3 +137,19 @@ test('annulation motivee et historisee selon le role',()=>{
   assert.match(app,/TypeEvenement:'ANNULATION'/);
   assert.match(app,/DateCloture:timestamp/);
 });
+
+test('le detail affiche l etape et reserve le traitement aux actions workflow',()=>{
+  assert.match(html,/id="detailStage"/);
+  assert.match(app,/function requestProgressLabel/);
+  assert.match(app,/En cours de validation par le gestionnaire d’unité/);
+  assert.match(app,/En cours de contrôle par le responsable conformité/);
+  assert.match(app,/\$\('#decisionForm'\)\.hidden=true/);
+  assert.match(app,/\$\('#decisionForm'\)\.hidden=false/);
+  assert.match(html,/\[hidden\]\{display:none!important\}/);
+});
+
+test('le bandeau identifie la version beta',()=>{
+  assert.match(html,/class="beta-badge"/);
+  assert.match(html,/>Bêta<\/span>/);
+  assert.match(html,/build=20260729-2/);
+});
