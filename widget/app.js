@@ -3,7 +3,7 @@
   const W = window.WorkflowCore;
   const TABLES = ['Demandes','Pays','Actions','Personnel','Roles','Statuts','EtapesWorkflow','Entites','Unites','CategoriesPays','VersionsPDF','ContexteUtilisateur','DemandeInscription','DemandeDroits'];
   const PDF_DECISION_STEPS = new Set(['CONTROLE_CONFORMITE','VALIDATION_CHEF_CORPS']);
-  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null, adminOverride:false, personnelImport:[]};
+  const state = {data:{}, index:{}, grist:false, busy:false, currentAction:null, currentUser:null, adminOverride:false, personnelImport:[], editingRequestId:null};
   const $ = (s) => document.querySelector(s);
   const nowSeconds = () => Date.now() / 1000;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -55,7 +55,7 @@
 
   function render(){
     const demandes=(state.data.Demandes||[]).map(demandeView), tasks=pendingActions(), today=new Date();today.setHours(0,0,0,0);
-    const late=demandes.filter(d=>d.HorsDelai===true||(!d.StatutCode.match(/TRANSMISE|CLOTUREE|ARCHIVEE|REFUSEE/)&&d.DateLimiteTraitement&&new Date(d.DateLimiteTraitement*1000)<today)).length;
+    const late=demandes.filter(d=>d.HorsDelai===true||(!d.StatutCode.match(/TRANSMISE|CLOTUREE|ARCHIVEE|REFUSEE|ANNULEE/)&&d.DateLimiteTraitement&&new Date(d.DateLimiteTraitement*1000)<today)).length;
     $('#cards').innerHTML=[['Actions à traiter',tasks.length,'tasks'],['Demandes urgentes',demandes.filter(d=>d.Urgente).length,'dashboard'],['⚠ Hors délai',late,'dashboard'],['À corriger',demandes.filter(d=>d.StatutCode==='A_CORRIGER').length,'dashboard']].map(([t,n,v])=>`<button class="card" data-card-view="${v}"><strong>${n}</strong>${esc(t)}</button>`).join('');
     document.querySelectorAll('[data-card-view]').forEach(b=>b.onclick=()=>show(b.dataset.cardView));
     $('#taskBadge').textContent=tasks.length;
@@ -193,12 +193,35 @@
     const unit=ref('Unites',d.Unite), entity=ref('Entites',d.Entite), category=ref('CategoriesPays',d.CategoriePays);
     return [['Personnel',d.PersonnelNom],['Unité',unit?.LibelleUnite],['Entité',entity?.LibelleEntite],['Pays',d.PaysNom],['Catégorie',category?.Libelle],['Séjour',dateText(d.DateDebutSejour)+' → '+dateText(d.DateFinSejour)],['Statut',d.StatutLibelle],['Étape',d.EtapeLibelle],['PDF SOFIA',hasRequestPdf(d)?'Présent':'À ajouter avant soumission'],['Urgence',d.Urgente?'Oui — '+(d.JustificationUrgence||'justification absente'):'Non'],['Motif',d.MotifDeplacement],['Date limite',dateText(d.DateLimiteTraitement)]].map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v||'—')}</dd></div>`).join('');
   }
-  function openRequest(id){const d=demandeView(ref('Demandes',id));if(!d)return;const user=requireCurrentUser();state.currentAction=null;state.currentRequest=d;$('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);$('#decisionForm').hidden=true;const isAuthor=[d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id));const canSubmit=isAuthor&&['BROUILLON','A_CORRIGER'].includes(d.StatutCode);$('#requestWorkflowActions').hidden=!canSubmit;if(canSubmit){$('#managePdf').textContent=hasRequestPdf(d)?'Ouvrir ou remplacer le PDF SOFIA':'Ajouter le PDF SOFIA dans Grist';$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Le PDF SOFIA doit être présent dans Demandes.PiecesJointes ou dans la version PDF active. Le widget relira automatiquement la fiche avant soumission.';}show('detail');}
+  function latestReturnAction(demandId){
+    return (state.data.Actions||[]).filter(a=>Number(a.Demande)===Number(demandId)&&(a.StatutAction==='RETOURNEE'||a.Decision==='RETOUR_CORRECTION')&&String(a.MotifRetour||'').trim()).sort((a,b)=>Number(b.DateTraitement||0)-Number(a.DateTraitement||0)||Number(b.id)-Number(a.id))[0]||null;
+  }
+  function renderCorrectionReason(d){
+    const box=$('#correctionReason'),action=d.StatutCode==='A_CORRIGER'?latestReturnAction(d.id):null;
+    if(!action){box.hidden=true;box.innerHTML='';return;}
+    const actor=label('Personnel',action.TraiteePar||action.AssigneeA,'NomComplet')||'Responsable du traitement',step=label('EtapesWorkflow',action.Etape,'Libelle')||d.EtapeLibelle;
+    box.innerHTML=`<strong>Motif de la demande de correction</strong><p>${esc(action.MotifRetour)}</p><small>${esc(step)} — ${esc(actor)} — ${esc(dateText(action.DateTraitement,true))}</small>`;
+    box.hidden=false;
+  }
+  function isRequestAuthor(d,user){return [d.CreeePar,d.Demandeur].some(x=>Number(x)===Number(user.id));}
+  function canCancelRequest(d,user){
+    if(!d||W.TERMINAUX.has(d.StatutCode))return false;
+    const {isAdmin,isManager}=personnelAccess();
+    return isRequestAuthor(d,user)||isAdmin||(isManager&&Number(d.Unite)===Number(user.Unite));
+  }
+  function openRequest(id){
+    const d=demandeView(ref('Demandes',id));if(!d)return;const user=requireCurrentUser();state.currentAction=null;state.currentRequest=d;
+    $('#detailRef').textContent=d.Reference||('#'+id);$('#detailBody').innerHTML=detailMarkup(d);renderCorrectionReason(d);$('#decisionForm').hidden=true;
+    const canEdit=isRequestAuthor(d,user)&&['BROUILLON','A_CORRIGER'].includes(d.StatutCode),canCancel=canCancelRequest(d,user);
+    $('#editRequest').hidden=!canEdit;$('#managePdf').hidden=!canEdit;$('#submitRequest').hidden=!canEdit;$('#cancelRequest').hidden=!canCancel;$('#requestWorkflowActions').hidden=!(canEdit||canCancel);
+    if(canEdit){$('#managePdf').textContent=hasRequestPdf(d)?'Ouvrir ou remplacer le PDF SOFIA':'Ajouter le PDF SOFIA dans Grist';$('#submitRequest').textContent=d.StatutCode==='A_CORRIGER'?'Soumettre à nouveau':'Soumettre la demande';$('#submitRequestHint').textContent='Vous pouvez corriger toutes les informations de la demande sauf le personnel concerné. Le PDF SOFIA doit être présent avant soumission.';}else $('#submitRequestHint').textContent='';
+    show('detail');
+  }
   function openAction(id){
     const user=requireCurrentUser(),raw=ref('Actions',id),a=raw&&actionView(raw),override=Boolean(a&&isWorkflowAdmin(user)&&Number(a.AssigneeA)!==Number(user.id));
     if(!a||(!override&&Number(a.AssigneeA)!==Number(user.id))){notice('Cette action ne vous est pas assignée.','error');return;}
     state.currentAction=a;state.currentRequest=a.demandeView;state.adminOverride=override;
-    $('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);
+    $('#requestWorkflowActions').hidden=true;$('#detailRef').textContent=a.demandeView.Reference||('#'+a.Demande);$('#detailBody').innerHTML=detailMarkup(a.demandeView);renderCorrectionReason(a.demandeView);
     const decisions=W.decisionsPour(a.EtapeCode),labels={VALIDER:a.EtapeCode==='VALIDATION_CHEF_CORPS'?'Avis favorable':'Valider',RETOURNER:'Retourner pour correction',REFUSER:'Refuser définitivement',TRANSMETTRE:'Transmettre à la BSPS'};
     const select=$('#decisionForm [name=Decision]'),comment=$('#decisionForm [name=Commentaire]');select.innerHTML='<option value="">Choisir</option>'+decisions.map(x=>`<option value="${x}">${esc(labels[x])}</option>`).join('');
     const pdfRequired=PDF_DECISION_STEPS.has(a.EtapeCode),pdfTreatment=$('#decisionForm [name=TraitementPDF]');$('#pdfDecisionFields').hidden=!pdfRequired;pdfTreatment.value='';$('#editActionPdf').hidden=true;$('#pdfDecisionHint').textContent=`Version active : ${label('VersionsPDF',a.demande.VersionPDFActive,'LibelleVersion')||'à initialiser'}. Pour une nouvelle version, ajoutez le PDF modifié à la suite des pièces jointes existantes.`;
@@ -331,6 +354,57 @@
     }catch(e){notice('Soumission impossible : '+e.message,'error');}
     finally{state.busy=false;$('#submitRequest').disabled=false;}
   }
+  function dateInputValue(value){
+    if(!value)return '';
+    const date=typeof value==='number'?new Date(value*1000):new Date(value);
+    return Number.isNaN(date.getTime())?'':date.toISOString().slice(0,10);
+  }
+  function prepareNewRequestForm(){
+    const form=$('#requestForm'),user=state.currentUser;state.editingRequestId=null;form.reset();renderFormOptions();
+    form.elements.PersonnelConcerne.disabled=false;form.elements.PersonnelConcerne.value=user?String(user.id):'';
+    const unit=user&&ref('Unites',user.Unite);form.elements.Unite.value=unit?.LibelleUnite||'';
+    $('#requestFormTitle').textContent='Nouvelle demande';$('#requestFormSubmit').textContent='Enregistrer le brouillon';
+  }
+  function openRequestEditor(d){
+    const user=requireCurrentUser();if(!d||!isRequestAuthor(d,user)||!['BROUILLON','A_CORRIGER'].includes(d.StatutCode)){notice('Cette demande ne peut pas être modifiée.','error');return;}
+    const form=$('#requestForm');state.editingRequestId=d.id;renderFormOptions();form.elements.PersonnelConcerne.value=String(d.PersonnelConcerne||'');form.elements.PersonnelConcerne.disabled=true;
+    form.elements.Unite.value=label('Unites',d.Unite,'LibelleUnite')||'';form.elements.Objet.value=d.Objet||'';form.elements.PaysDestination.value=String(d.PaysDestination||'');
+    form.elements.DateDebutSejour.value=dateInputValue(d.DateDebutSejour);form.elements.DateFinSejour.value=dateInputValue(d.DateFinSejour);form.elements.MotifDeplacement.value=d.MotifDeplacement||'';
+    form.elements.Urgente.checked=d.Urgente===true;form.elements.JustificationUrgence.value=d.JustificationUrgence||'';
+    $('#requestFormTitle').textContent=`Modifier ${d.Reference||'la demande'}`;$('#requestFormSubmit').textContent='Enregistrer les modifications';show('form');
+  }
+  async function updateRequest(form,submit){
+    if(state.busy||!state.editingRequestId)return;const requestId=state.editingRequestId,fd=new FormData(form),input=Object.fromEntries(fd);input.Urgente=fd.has('Urgente');
+    state.busy=true;submit.disabled=true;
+    try{
+      const user=requireCurrentUser();if(!state.grist){notice('Modification simulée : aucune écriture réelle.');return;}
+      const fresh=rows(await grist.docApi.fetchTable('Demandes')).find(r=>Number(r.id)===Number(requestId));if(!fresh)throw Error('La demande n’est plus accessible.');const d=demandeView(fresh);
+      if(!isRequestAuthor(d,user)||!['BROUILLON','A_CORRIGER'].includes(d.StatutCode))throw Error('La demande n’est plus modifiable dans son état actuel.');
+      const checked={...d,...input,PersonnelConcerne:d.PersonnelConcerne};const errors=W.valide(checked);if(errors.length)throw Error(errors.join(' '));
+      const changes={Objet:String(input.Objet||'').trim(),PaysDestination:Number(input.PaysDestination),DateDebutSejour:new Date(input.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(input.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:String(input.MotifDeplacement||'').trim(),Urgente:input.Urgente,JustificationUrgence:String(input.JustificationUrgence||'').trim(),DateDerniereAction:nowSeconds(),Revision:Number(d.Revision||0)+1};
+      await grist.docApi.applyUserActions([
+        ['UpdateRecord','Demandes',d.id,changes],
+        ['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:nowSeconds(),Utilisateur:user.id,TypeEvenement:'MODIFICATION_DEMANDE',AncienStatut:d.Statut,NouveauStatut:d.Statut,AncienneEtape:d.EtapeActuelle,NouvelleEtape:d.EtapeActuelle,Commentaire:d.StatutCode==='A_CORRIGER'?'Correction des informations demandées.':'Modification du brouillon.',ResumeModification:'Modification des informations métier ; personnel, unité et entité conservés.'}]
+      ]);
+      state.editingRequestId=null;form.elements.PersonnelConcerne.disabled=false;await refresh();openRequest(d.id);notice('Modifications enregistrées. Vous pouvez vérifier le PDF puis soumettre la demande.','success');
+    }catch(e){notice('Modification impossible : '+e.message,'error');}
+    finally{state.busy=false;submit.disabled=false;}
+  }
+  async function cancelCurrentRequest(){
+    if(state.busy||!state.currentRequest)return;const reason=String(prompt('Motif de l’annulation (obligatoire) :')||'').trim();if(!reason)return;if(!confirm('Confirmer l’annulation définitive de cette demande ?'))return;
+    state.busy=true;$('#cancelRequest').disabled=true;
+    try{
+      const user=requireCurrentUser();if(!state.grist){notice('Annulation simulée : aucune écriture réelle.');return;}
+      const [demandTable,actionTable]=await Promise.all([grist.docApi.fetchTable('Demandes'),grist.docApi.fetchTable('Actions')]),fresh=rows(demandTable).find(r=>Number(r.id)===Number(state.currentRequest.id));if(!fresh)throw Error('La demande n’est plus accessible.');const d=demandeView(fresh);
+      if(!canCancelRequest(d,user))throw Error('Vous n’êtes pas autorisé à annuler cette demande ou elle est déjà terminée.');const status=rowByCode('Statuts','ANNULEE'),timestamp=nowSeconds();
+      const openActions=rows(actionTable).filter(a=>Number(a.Demande)===Number(d.id)&&['A_FAIRE','EN_COURS'].includes(a.StatutAction));
+      const actions=openActions.map(a=>['UpdateRecord','Actions',a.id,{StatutAction:'ANNULEE',Decision:'ANNULEE',Commentaire:reason,DateTraitement:timestamp,TraiteePar:user.id}]);
+      actions.push(['UpdateRecord','Demandes',d.id,{Statut:status.id,ResponsableActuel:null,DateDerniereAction:timestamp,DateCloture:timestamp,Revision:Number(d.Revision||0)+1}]);
+      actions.push(['AddRecord','Historique',null,{Demande:d.id,Version:Number(d.Version||1),DateHeure:timestamp,Utilisateur:user.id,TypeEvenement:'ANNULATION',AncienStatut:d.Statut,NouveauStatut:status.id,AncienneEtape:d.EtapeActuelle,NouvelleEtape:d.EtapeActuelle,Commentaire:reason,ResumeModification:`Annulation par ${isWorkflowAdmin(user)?'un administrateur':isRequestAuthor(d,user)?'l’auteur':'le gestionnaire de l’unité'} ; ${openActions.length} action(s) ouverte(s) neutralisée(s).`}]);
+      await grist.docApi.applyUserActions(actions);state.currentRequest=null;await refresh();show('dashboard');notice('Demande annulée. Le motif et l’auteur de l’action sont enregistrés dans l’historique.','success');
+    }catch(e){notice('Annulation impossible : '+e.message,'error');}
+    finally{state.busy=false;$('#cancelRequest').disabled=false;}
+  }
   async function createDraft(form,submit){
     if(state.busy)return;const fd=new FormData(form),d=Object.fromEntries(fd);d.Urgente=fd.has('Urgente');const errors=W.valide(d);if(errors.length){notice(errors.join(' '),'error');return;}if(!confirm('Enregistrer ce brouillon puis ouvrir sa fiche Grist pour ajouter le PDF SOFIA ?'))return;
     state.busy=true;submit.disabled=true;
@@ -339,7 +413,7 @@
       const user=requireCurrentUser(),status=rowByCode('Statuts','BROUILLON'),step=rowByCode('EtapesWorkflow','DEMANDE_INITIALE'),reference=`DPE-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,createdAt=nowSeconds();
       if(!user.Unite||!user.Entite)throw Error('Votre fiche Personnel doit contenir une unité et une entité.');
       await grist.docApi.applyUserActions([['AddRecord','Demandes',null,{Reference:reference,ReferenceHistorique:reference,Version:1,Revision:0,CreeePar:user.id,Demandeur:user.id,PersonnelConcerne:user.id,DateDemande:createdAt,PaysDestination:Number(d.PaysDestination),Objet:d.Objet||'',DateDebutSejour:new Date(d.DateDebutSejour+'T12:00:00').getTime()/1000,DateFinSejour:new Date(d.DateFinSejour+'T12:00:00').getTime()/1000,MotifDeplacement:d.MotifDeplacement,Urgente:d.Urgente,JustificationUrgence:d.JustificationUrgence||'',Statut:status.id,EtapeActuelle:step.id,Archivee:false}]]);
-      form.reset();await refresh();const created=(state.data.Demandes||[]).find(r=>r.Reference===reference);if(!created)throw Error('Brouillon créé mais impossible à retrouver.');openRequest(created.id);notice(`Brouillon ${reference} créé. Ajoutez maintenant le PDF SOFIA dans PiecesJointes.`,'success');
+      state.editingRequestId=null;form.reset();await refresh();const created=(state.data.Demandes||[]).find(r=>r.Reference===reference);if(!created)throw Error('Brouillon créé mais impossible à retrouver.');openRequest(created.id);notice(`Brouillon ${reference} créé. Ajoutez maintenant le PDF SOFIA dans PiecesJointes.`,'success');
       try{await openNativeAttachmentEditor(created.id);}catch{notice(`Brouillon ${reference} créé. Utilisez le bouton « Ajouter le PDF SOFIA dans Grist » pour ouvrir la fiche native.`,'error');}
     }catch(e){notice('Écriture refusée par Grist : '+e.message,'error');}finally{state.busy=false;submit.disabled=false;}
   }
@@ -387,20 +461,22 @@
     try{await refresh();$('#mode').textContent='Connecté à Grist';}catch(e){$('#mode').textContent='Configuration Grist incomplète';notice('Chargement impossible : '+e.message+'. Vérifiez les noms des tables et l’accès complet.','error');}
   }
 
-  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>show(b.dataset.view));
+  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.view==='form')prepareNewRequestForm();show(b.dataset.view);});
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>show('dashboard'));
   $('#search').oninput=renderRequests;$('#filter').onchange=renderRequests;$('#refreshTasks').onclick=()=>refresh().catch(e=>notice(e.message,'error'));$('#refreshManagementTasks').onclick=()=>refresh().catch(e=>notice(e.message,'error'));
   $('[name=PersonnelConcerne]').onchange=e=>{const p=ref('Personnel',e.target.value),u=p&&ref('Unites',p.Unite);$('[name=Unite]').value=u?.LibelleUnite||'';};
   $('#decisionForm [name=Decision]').onchange=e=>{$('#returnReason').hidden=e.target.value!=='RETOURNER';$('#decisionForm [name=MotifRetour]').required=e.target.value==='RETOURNER';};
   $('#decisionForm [name=TraitementPDF]').onchange=e=>{$('#editActionPdf').hidden=e.target.value!=='NOUVELLE_VERSION';};
   $('#decisionForm').onsubmit=e=>{e.preventDefault();decide(e.target);};
-  $('#requestForm').onsubmit=e=>{e.preventDefault();createDraft(e.target,e.submitter);};
+  $('#requestForm').onsubmit=e=>{e.preventDefault();state.editingRequestId?updateRequest(e.target,e.submitter):createDraft(e.target,e.submitter);};
   $('#profileForm').onsubmit=e=>{e.preventDefault();submitProfile(e.target,e.submitter);};
   $('#rightsForm').onsubmit=e=>{e.preventDefault();submitRights(e.target,e.submitter);};
   $('#personnelForm').onsubmit=e=>{e.preventDefault();submitPersonnel(e.target,e.submitter);};
   $('#personnelCsv').onchange=e=>loadPersonnelCsv(e.target.files[0]);
   $('#importPersonnel').onclick=importPersonnel;
   $('#managePdf').onclick=async()=>{try{if(!state.currentRequest)return;await openNativeAttachmentEditor(state.currentRequest.id);}catch(e){notice('Ouverture de la fiche native impossible : '+e.message,'error');}};
+  $('#editRequest').onclick=()=>state.currentRequest&&openRequestEditor(state.currentRequest);
+  $('#cancelRequest').onclick=cancelCurrentRequest;
   $('#editActionPdf').onclick=async()=>{try{if(!state.currentRequest)return;await openNativeAttachmentEditor(state.currentRequest.id);}catch(e){notice('Ouverture de la fiche native impossible : '+e.message,'error');}};
   $('#submitRequest').onclick=submitCurrentRequest;
   init();

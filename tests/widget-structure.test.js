@@ -110,3 +110,30 @@ test('un administrateur voit et trace l auto validation de ses demandes',()=>{
   assert.match(app,/CommentaireGestionnaire:\[comment,selfAudit\]/);
   assert.match(app,/CommentaireAdministrateur:\[comment,selfAudit\]/);
 });
+
+test('une demande retournee est modifiable sans toucher au personnel',()=>{
+  for(const id of ['editRequest','requestFormTitle','requestFormSubmit','correctionReason'])assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(app,/function openRequestEditor/);
+  assert.match(app,/function updateRequest/);
+  assert.match(app,/PersonnelConcerne\.disabled=true/);
+  assert.match(app,/Modification des informations métier ; personnel, unité et entité conservés/);
+  assert.doesNotMatch(app,/const changes=\{[^}]*PersonnelConcerne:/);
+  assert.match(app,/TypeEvenement:'MODIFICATION_DEMANDE'/);
+});
+
+test('le motif de retour est affiche clairement depuis l action',()=>{
+  assert.match(app,/function latestReturnAction/);
+  assert.match(app,/a\.Decision==='RETOUR_CORRECTION'/);
+  assert.match(app,/Motif de la demande de correction/);
+  assert.match(app,/action\.MotifRetour/);
+});
+
+test('annulation motivee et historisee selon le role',()=>{
+  assert.match(html,/id="cancelRequest"/);
+  assert.match(app,/function canCancelRequest/);
+  assert.match(app,/isManager&&Number\(d\.Unite\)===Number\(user\.Unite\)/);
+  assert.match(app,/rowByCode\('Statuts','ANNULEE'\)/);
+  assert.match(app,/StatutAction:'ANNULEE',Decision:'ANNULEE'/);
+  assert.match(app,/TypeEvenement:'ANNULATION'/);
+  assert.match(app,/DateCloture:timestamp/);
+});

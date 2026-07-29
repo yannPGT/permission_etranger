@@ -8,6 +8,7 @@ RESOUMISE;Resoumise;FALSE
 A_VALIDER_CHEF_CORPS;À valider par le chef de corps;FALSE
 EN_VALIDATION_CHEF_CORPS;En validation chef de corps;FALSE
 REFUSEE;Refusée;TRUE
+ANNULEE;Annulée;TRUE
 A_TRANSMETTRE_BSPS;À transmettre à la BSPS;FALSE
 TRANSMISE_BSPS;Transmise à la BSPS;TRUE
 CLOTUREE;Clôturée;TRUE

@@ -15,3 +15,7 @@ test('premiere soumission cree une validation gestionnaire',()=>assert.deepEqual
 test('validation gestionnaire transmet a la conformite',()=>assert.deepEqual(W.transition('SOUMISE','VALIDER'),{statut:'A_CONTROLER',etape:'CONTROLE_CONFORMITE',event:'VALIDATION_GESTIONNAIRE'}));
 test('retour gestionnaire resoumet au gestionnaire',()=>assert.deepEqual(W.cibleSoumission('A_CORRIGER','VALIDATION_GESTIONNAIRE'),{statut:'SOUMISE',etape:'VALIDATION_GESTIONNAIRE',event:'RESOUMISSION',incrementVersion:true}));
 test('retour gestionnaire exige un motif',()=>assert.throws(()=>W.verifieDecision('SOUMISE','VALIDATION_GESTIONNAIRE','RETOURNER','')));
+test('annulation est un statut terminal',()=>{
+  assert.equal(W.TERMINAUX.has('ANNULEE'),true);
+  assert.throws(()=>W.applique({Statut:'ANNULEE',Version:1},'VALIDER','','VALIDATION_GESTIONNAIRE'));
+});
