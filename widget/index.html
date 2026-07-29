@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Permissions à l’étranger</title>
-  <link rel="stylesheet" href="styles.css?build=20260729">
+  <link rel="stylesheet" href="styles.css?build=20260729-2">
   <style>
     header{padding:.65rem 1rem}
     .brand{gap:.8rem}
@@ -13,6 +13,9 @@
     .logo{width:72px;height:58px}
     .correction-panel{border-left:5px solid var(--danger);background:#fef3f2}
     .danger{color:#fff;background:var(--danger);border-color:var(--danger)}
+    [hidden]{display:none!important}
+    .beta-badge{align-self:flex-start;border:1px solid #f7c948;border-radius:4px;padding:.28rem .55rem;color:#f7c948;font-size:.72rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;white-space:nowrap}
+    .stage-badge{display:inline-block;margin-left:.45rem;border:1px solid #b8c4cf;border-radius:1rem;padding:.22rem .58rem;color:#465564;background:#eef2f5;font-size:.78rem;font-weight:600;vertical-align:middle}
   </style>
 </head>
 <body>
@@ -33,6 +36,7 @@
         <button id="personnelNav" data-view="personnelAdmin" hidden title="Ajouter une personne ou importer un fichier CSV">Personnel</button>
       </div></div>
     </nav>
+    <span class="beta-badge" title="Version en cours de développement">Bêta</span>
   </header>
   <div class="release-strip">© YannPGT · v1.0</div>
   <main>
@@ -71,7 +75,7 @@
     </section>
 
     <section id="detail" hidden>
-      <div class="section-title"><h1>Dossier <span id="detailRef"></span></h1><button type="button" data-close>Fermer</button></div>
+      <div class="section-title"><h1>Dossier <span id="detailRef"></span><span id="detailStage" class="stage-badge"></span></h1><button type="button" data-close>Fermer</button></div>
       <div id="detailBody" class="detail-grid"></div>
       <div id="correctionReason" class="status-panel correction-panel" hidden></div>
       <div id="requestWorkflowActions" class="workflow-actions" hidden>
@@ -156,7 +160,7 @@
     </section>
   </main>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-  <script src="workflow-core.js?build=20260729"></script>
-  <script src="app.js?build=20260729"></script>
+  <script src="workflow-core.js?build=20260729-2"></script>
+  <script src="app.js?build=20260729-2"></script>
 </body>
 </html>

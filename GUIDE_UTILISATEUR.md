@@ -1,6 +1,6 @@
 # Guide utilisateur
 
-La page d'accueil présente vos seules actions autorisées. Les cartes résument urgences, retards et corrections ; recherche et statut filtrent la liste.
+La page d'accueil présente vos seules actions autorisées. Les cartes résument urgences, retards et corrections ; recherche et statut filtrent la liste. Dans le détail d’un dossier, un indicateur placé après sa référence précise l’étape en cours. Le formulaire « Traiter l’action » n’apparaît que lorsque le dossier est ouvert depuis « Actions workflow ». Le badge « Bêta » du bandeau signale une version encore en cours de développement.
 
 La page « Mes actions » présente les actions `A_FAIRE` et `EN_COURS` visibles selon les règles Grist. « Prendre en charge » horodate la réception et la prise en charge. « Traiter » ouvre le dossier et propose uniquement les décisions de l'étape : validation, retour motivé, refus définitif ou transmission BSPS.
 
